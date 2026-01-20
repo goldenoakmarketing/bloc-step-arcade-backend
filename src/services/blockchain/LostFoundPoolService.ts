@@ -5,8 +5,8 @@ import { config } from '../../config'
 
 // Pool constants
 const POOL_CAP = 100 // Max quarters in pool
-const OVERFLOW_STAKING_PERCENT = 50 // 50% to staking rewards
-const OVERFLOW_OPERATIONS_PERCENT = 50 // 50% to operations
+const OVERFLOW_STAKING_PERCENT = 75 // 75% to staking rewards
+const OVERFLOW_OPERATIONS_PERCENT = 25 // 25% to operations
 
 interface PoolState {
   balance: number // Current quarters in pool
@@ -53,7 +53,7 @@ export class LostFoundPoolService {
     const addedToPool = Math.min(quarters, spaceInPool)
     const overflow = quarters - addedToPool
 
-    // Split overflow 50/50
+    // Split overflow 75/25
     const overflowToStaking = Math.floor(overflow * (OVERFLOW_STAKING_PERCENT / 100))
     const overflowToOperations = overflow - overflowToStaking
 
@@ -81,7 +81,7 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Process a purchase and extract the 1:6 donation
+   * Process a purchase and extract the 1:8 donation
    */
   async processPurchaseDonation(quartersPurchased: number): Promise<{
     donationAmount: number
@@ -89,8 +89,8 @@ export class LostFoundPoolService {
     overflowToStaking: number
     overflowToOperations: number
   }> {
-    // 1 in 6 goes to pool
-    const donationAmount = Math.floor(quartersPurchased / 6)
+    // 1 in 8 goes to pool
+    const donationAmount = Math.floor(quartersPurchased / 8)
 
     if (donationAmount === 0) {
       return {
