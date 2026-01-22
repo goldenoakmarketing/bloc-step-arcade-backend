@@ -4,7 +4,8 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { config } from '../../config'
 
 // Pool constants
-const POOL_CAP = 100 // Max quarters in pool
+const POOL_CAP = 2500 // Max quarters in pool
+const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 const OVERFLOW_STAKING_PERCENT = 75 // 75% to staking rewards
 const OVERFLOW_OPERATIONS_PERCENT = 25 // 25% to operations
 
@@ -16,10 +17,17 @@ interface PoolState {
   totalOverflowToOperations: number // All-time overflow to operations
 }
 
+interface UserClaimState {
+  lastClaimTime: number // Unix timestamp (ms)
+  streak: number // Consecutive daily check-ins
+}
+
 export class LostFoundPoolService {
   private publicClient
   private walletClient
   private account
+  // TODO: Persist to database for production
+  private userStates: Map<string, UserClaimState> = new Map()
 
   constructor() {
     this.publicClient = createPublicClient({
@@ -132,43 +140,133 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Claim quarters from the pool
-   * Amount claimable depends on visit frequency
+   * Check if user can claim (24-hour cooldown)
    */
-  async claimFromPool(playerId: string, visitFrequency: 'daily' | '2x_week' | '1x_week' | 'rare'): Promise<{
+  canClaim(playerId: string): { allowed: boolean; nextClaimTime?: Date; reason?: string } {
+    const userState = this.userStates.get(playerId)
+
+    if (!userState) {
+      return { allowed: true }
+    }
+
+    const now = Date.now()
+    const timeSinceLastClaim = now - userState.lastClaimTime
+
+    if (timeSinceLastClaim < COOLDOWN_MS) {
+      const nextClaimTime = this.getNextResetTime(userState.lastClaimTime)
+      return {
+        allowed: false,
+        nextClaimTime,
+        reason: 'Cooldown active. Try again after 00:00 UTC.',
+      }
+    }
+
+    return { allowed: true }
+  }
+
+  /**
+   * Get next 00:00 UTC reset time after a given timestamp
+   */
+  private getNextResetTime(afterTimestamp: number): Date {
+    const date = new Date(afterTimestamp)
+    const nextDay = new Date(Date.UTC(
+      date.getUTCFullYear(),
+      date.getUTCMonth(),
+      date.getUTCDate() + 1,
+      0, 0, 0, 0
+    ))
+    return nextDay
+  }
+
+  /**
+   * Update streak based on time since last claim
+   */
+  private updateStreak(playerId: string, now: number): number {
+    const userState = this.userStates.get(playerId)
+
+    if (!userState) {
+      return 1 // First claim ever
+    }
+
+    const hoursSinceLastClaim = (now - userState.lastClaimTime) / (1000 * 60 * 60)
+
+    if (hoursSinceLastClaim >= 24 && hoursSinceLastClaim <= 48) {
+      // Within window: streak continues
+      return userState.streak + 1
+    } else if (hoursSinceLastClaim > 48) {
+      // Missed a day: streak resets
+      return 1
+    }
+
+    // Shouldn't reach here due to cooldown, but return current streak
+    return userState.streak
+  }
+
+  /**
+   * Claim quarters from the pool
+   * Amount claimable depends on streak (consecutive daily check-ins)
+   */
+  async claimFromPool(playerId: string): Promise<{
     claimed: number
     poolBalanceAfter: number
+    streak: number
+    nextClaimTime: Date
+    cooldownActive?: boolean
   }> {
-    const maxClaimable = this.getMaxClaimable(visitFrequency)
+    const now = Date.now()
+
+    // Check cooldown
+    const cooldownCheck = this.canClaim(playerId)
+    if (!cooldownCheck.allowed) {
+      return {
+        claimed: 0,
+        poolBalanceAfter: await this.getPoolBalance(),
+        streak: this.userStates.get(playerId)?.streak || 0,
+        nextClaimTime: cooldownCheck.nextClaimTime!,
+        cooldownActive: true,
+      }
+    }
+
+    // Calculate new streak
+    const newStreak = this.updateStreak(playerId, now)
+
+    // Get max claimable based on streak
+    const maxClaimable = this.getMaxClaimable(newStreak)
     const currentBalance = await this.getPoolBalance()
     const claimed = Math.min(maxClaimable, currentBalance)
 
+    // Update user state
+    this.userStates.set(playerId, {
+      lastClaimTime: now,
+      streak: newStreak,
+    })
+
     if (claimed > 0) {
       await this.withdrawFromPool(claimed, playerId)
-      console.log(`[LostFoundPool] Player ${playerId} claimed ${claimed}Q (frequency: ${visitFrequency})`)
+      console.log(`[LostFoundPool] Player ${playerId} claimed ${claimed}Q (streak: ${newStreak} days)`)
     }
 
     return {
       claimed,
       poolBalanceAfter: currentBalance - claimed,
+      streak: newStreak,
+      nextClaimTime: this.getNextResetTime(now),
     }
   }
 
   /**
-   * Get max claimable based on visit frequency
+   * Get max claimable based on streak (consecutive daily check-ins)
+   * 4+ days → 4 quarters
+   * 2-3 days → 2 quarters
+   * 1 day → 1 quarter
    */
-  getMaxClaimable(visitFrequency: 'daily' | '2x_week' | '1x_week' | 'rare'): number {
-    switch (visitFrequency) {
-      case 'daily':
-        return 4
-      case '2x_week':
-        return 3
-      case '1x_week':
-        return 2
-      case 'rare':
-      default:
-        return 1
+  getMaxClaimable(streak: number): number {
+    if (streak >= 4) {
+      return 4
+    } else if (streak >= 2) {
+      return 2
     }
+    return 1
   }
 
   /**
