@@ -5,8 +5,10 @@ import {
   yeetEngineAbi,
   stakingPoolAbi,
   tipBotAbi,
+  poolPayoutAbi,
   contractAddresses,
 } from '../../config/contracts.js';
+import { lostFoundPoolService } from './LostFoundPoolService.js';
 import { config } from '../../config/index.js';
 import { supabase } from '../../config/supabase.js';
 import { createChildLogger } from '../../utils/logger.js';
@@ -77,6 +79,14 @@ export class EventListenerService {
       contractAddress: contractAddresses.tipBot,
       eventName: 'TipExecuted',
       handler: this.handleTipExecuted.bind(this),
+    });
+
+    // PoolPayout Claimed event
+    this.handlers.push({
+      contractName: 'PoolPayout',
+      contractAddress: contractAddresses.poolPayout,
+      eventName: 'Claimed',
+      handler: this.handlePoolClaimed.bind(this),
     });
   }
 
@@ -160,6 +170,7 @@ export class EventListenerService {
       YeetEngine: yeetEngineAbi,
       StakingPool: stakingPoolAbi,
       TipBot: tipBotAbi,
+      PoolPayout: poolPayoutAbi,
     };
 
     const abi = abis[contractName];
@@ -220,6 +231,25 @@ export class EventListenerService {
           cached_time_balance: player.cached_time_balance + Number(args.seconds),
         })
         .eq('id', player.id);
+    }
+
+    // Route 1/8 of purchase to Lost & Found pool
+    // 1 quarter = 15 minutes = 900 seconds
+    const quartersPurchased = Math.floor(Number(args.seconds) / 900);
+    if (quartersPurchased > 0) {
+      try {
+        const result = await lostFoundPoolService.processPurchaseDonation(quartersPurchased);
+        if (result.donationAmount > 0) {
+          logger.info({
+            quartersPurchased,
+            donationAmount: result.donationAmount,
+            addedToPool: result.addedToPool,
+            overflow: result.overflowToStaking + result.overflowToOperations,
+          }, 'Routed purchase donation to Lost & Found pool');
+        }
+      } catch (error) {
+        logger.error({ error, quartersPurchased }, 'Failed to route purchase donation to pool');
+      }
     }
   }
 
@@ -327,6 +357,20 @@ export class EventListenerService {
       .from('tips')
       .update({ status: 'confirmed', confirmed_at: new Date().toISOString() })
       .eq('tx_hash', log.transactionHash);
+  }
+
+  private async handlePoolClaimed(log: Log): Promise<void> {
+    const args = (log as unknown as { args: { player: Address; amount: bigint; timestamp: bigint } }).args;
+    logger.info({ player: args.player, amount: args.amount.toString(), txHash: log.transactionHash }, 'PoolClaimed event');
+
+    // Update pool claim history with confirmed status
+    await supabase
+      .from('pool_claim_history')
+      .update({ tx_hash: log.transactionHash })
+      .eq('wallet_address', args.player.toLowerCase())
+      .is('tx_hash', null)
+      .order('claimed_at', { ascending: false })
+      .limit(1);
   }
 
   private async getPlayer(walletAddress: Address) {

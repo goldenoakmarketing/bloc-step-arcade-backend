@@ -150,6 +150,65 @@ export const stakingPoolAbi = [
   },
 ] as const;
 
+// PoolPayout ABI - Lost & Found pool claims
+export const poolPayoutAbi = [
+  {
+    inputs: [{ name: 'player', type: 'address' }],
+    name: 'blocToken',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'gameServer',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalClaimed',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'player', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'claim',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getBalance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getQuarterBalance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'player', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'timestamp', type: 'uint256' },
+    ],
+    name: 'Claimed',
+    type: 'event',
+  },
+] as const;
+
 // ERC20 ABI for BLOC token
 export const erc20Abi = [
   {
@@ -187,4 +246,5 @@ export const contractAddresses = {
   yeetEngine: config.contracts.yeetEngine,
   stakingPool: config.contracts.stakingPool,
   blocToken: config.contracts.blocToken,
+  poolPayout: config.contracts.poolPayout,
 } as const;

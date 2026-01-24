@@ -1,46 +1,53 @@
-import { createPublicClient, createWalletClient, http, parseEther, formatEther } from 'viem'
+import { createPublicClient, createWalletClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
-import { config } from '../../config'
+import { config } from '../../config/index.js'
+import { supabase } from '../../config/supabase.js'
+import { contractAddresses, poolPayoutAbi } from '../../config/contracts.js'
+import { createChildLogger } from '../../utils/logger.js'
+import type { Address } from '../../types/index.js'
+
+const logger = createChildLogger('LostFoundPoolService')
 
 // Pool constants
 const POOL_CAP = 2500 // Max quarters in pool
 const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
-const OVERFLOW_STAKING_PERCENT = 75 // 75% to staking rewards
-const OVERFLOW_OPERATIONS_PERCENT = 25 // 25% to operations
+const OVERFLOW_STAKING_PERCENT = 75 // 75% to staking rewards (remaining 25% to operations)
+const QUARTER_AMOUNT = 250n * 10n ** 18n // 250 BLOC per quarter
 
 interface PoolState {
   balance: number // Current quarters in pool
   totalReceived: number // All-time quarters received
   totalClaimed: number // All-time quarters claimed
-  totalOverflowToStaking: number // All-time overflow to staking
-  totalOverflowToOperations: number // All-time overflow to operations
+  totalOverflow: number // All-time overflow distributed
 }
 
-interface UserClaimState {
-  lastClaimTime: number // Unix timestamp (ms)
-  streak: number // Consecutive daily check-ins
+interface ClaimResult {
+  claimed: number
+  poolBalanceAfter: number
+  streak: number
+  nextClaimTime: Date
+  cooldownActive?: boolean
+  txHash?: string
 }
 
 export class LostFoundPoolService {
   private publicClient
   private walletClient
   private account
-  // TODO: Persist to database for production
-  private userStates: Map<string, UserClaimState> = new Map()
 
   constructor() {
     this.publicClient = createPublicClient({
       chain: base,
-      transport: http(config.rpcUrl),
+      transport: http(config.blockchain.rpcUrl),
     })
 
-    if (config.gameServerPrivateKey) {
-      this.account = privateKeyToAccount(config.gameServerPrivateKey as `0x${string}`)
+    if (config.blockchain.gameServerPrivateKey) {
+      this.account = privateKeyToAccount(config.blockchain.gameServerPrivateKey)
       this.walletClient = createWalletClient({
         account: this.account,
         chain: base,
-        transport: http(config.rpcUrl),
+        transport: http(config.blockchain.rpcUrl),
       })
     }
   }
@@ -54,8 +61,8 @@ export class LostFoundPoolService {
     overflowToStaking: number
     overflowToOperations: number
   }> {
-    const currentBalance = await this.getPoolBalance()
-    const spaceInPool = Math.max(0, POOL_CAP - currentBalance)
+    const poolState = await this.getPoolState()
+    const spaceInPool = Math.max(0, POOL_CAP - poolState.balance)
 
     // How much goes to pool vs overflow
     const addedToPool = Math.min(quarters, spaceInPool)
@@ -65,20 +72,19 @@ export class LostFoundPoolService {
     const overflowToStaking = Math.floor(overflow * (OVERFLOW_STAKING_PERCENT / 100))
     const overflowToOperations = overflow - overflowToStaking
 
-    // Execute the distributions
-    if (addedToPool > 0) {
-      await this.depositToPool(addedToPool)
-      console.log(`[LostFoundPool] Added ${addedToPool}Q to pool from ${source}`)
-    }
+    // Update database
+    if (addedToPool > 0 || overflow > 0) {
+      await supabase
+        .from('lost_found_pool')
+        .update({
+          balance: poolState.balance + addedToPool,
+          total_received: poolState.totalReceived + quarters,
+          total_overflow: poolState.totalOverflow + overflow,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', (await this.getPoolRecord()).id)
 
-    if (overflowToStaking > 0) {
-      await this.sendToStakingRewards(overflowToStaking)
-      console.log(`[LostFoundPool] Overflow: ${overflowToStaking}Q -> Staking Rewards`)
-    }
-
-    if (overflowToOperations > 0) {
-      await this.sendToOperations(overflowToOperations)
-      console.log(`[LostFoundPool] Overflow: ${overflowToOperations}Q -> Operations`)
+      logger.info({ addedToPool, overflow, source }, 'Added quarters to pool')
     }
 
     return {
@@ -142,18 +148,19 @@ export class LostFoundPoolService {
   /**
    * Check if user can claim (24-hour cooldown)
    */
-  canClaim(playerId: string): { allowed: boolean; nextClaimTime?: Date; reason?: string } {
-    const userState = this.userStates.get(playerId)
+  async canClaim(walletAddress: string): Promise<{ allowed: boolean; nextClaimTime?: Date; reason?: string }> {
+    const claimState = await this.getClaimState(walletAddress)
 
-    if (!userState) {
+    if (!claimState || !claimState.last_claim_time) {
       return { allowed: true }
     }
 
     const now = Date.now()
-    const timeSinceLastClaim = now - userState.lastClaimTime
+    const lastClaimTime = new Date(claimState.last_claim_time).getTime()
+    const timeSinceLastClaim = now - lastClaimTime
 
     if (timeSinceLastClaim < COOLDOWN_MS) {
-      const nextClaimTime = this.getNextResetTime(userState.lastClaimTime)
+      const nextClaimTime = this.getNextResetTime(lastClaimTime)
       return {
         allowed: false,
         nextClaimTime,
@@ -179,79 +186,25 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Update streak based on time since last claim
+   * Calculate streak based on time since last claim
    */
-  private updateStreak(playerId: string, now: number): number {
-    const userState = this.userStates.get(playerId)
-
-    if (!userState) {
+  private calculateNewStreak(lastClaimTime: Date | null, currentStreak: number, now: number): number {
+    if (!lastClaimTime) {
       return 1 // First claim ever
     }
 
-    const hoursSinceLastClaim = (now - userState.lastClaimTime) / (1000 * 60 * 60)
+    const hoursSinceLastClaim = (now - new Date(lastClaimTime).getTime()) / (1000 * 60 * 60)
 
     if (hoursSinceLastClaim >= 24 && hoursSinceLastClaim <= 48) {
       // Within window: streak continues
-      return userState.streak + 1
+      return currentStreak + 1
     } else if (hoursSinceLastClaim > 48) {
       // Missed a day: streak resets
       return 1
     }
 
     // Shouldn't reach here due to cooldown, but return current streak
-    return userState.streak
-  }
-
-  /**
-   * Claim quarters from the pool
-   * Amount claimable depends on streak (consecutive daily check-ins)
-   */
-  async claimFromPool(playerId: string): Promise<{
-    claimed: number
-    poolBalanceAfter: number
-    streak: number
-    nextClaimTime: Date
-    cooldownActive?: boolean
-  }> {
-    const now = Date.now()
-
-    // Check cooldown
-    const cooldownCheck = this.canClaim(playerId)
-    if (!cooldownCheck.allowed) {
-      return {
-        claimed: 0,
-        poolBalanceAfter: await this.getPoolBalance(),
-        streak: this.userStates.get(playerId)?.streak || 0,
-        nextClaimTime: cooldownCheck.nextClaimTime!,
-        cooldownActive: true,
-      }
-    }
-
-    // Calculate new streak
-    const newStreak = this.updateStreak(playerId, now)
-
-    // Get max claimable based on streak
-    const maxClaimable = this.getMaxClaimable(newStreak)
-    const currentBalance = await this.getPoolBalance()
-    const claimed = Math.min(maxClaimable, currentBalance)
-
-    // Update user state
-    this.userStates.set(playerId, {
-      lastClaimTime: now,
-      streak: newStreak,
-    })
-
-    if (claimed > 0) {
-      await this.withdrawFromPool(claimed, playerId)
-      console.log(`[LostFoundPool] Player ${playerId} claimed ${claimed}Q (streak: ${newStreak} days)`)
-    }
-
-    return {
-      claimed,
-      poolBalanceAfter: currentBalance - claimed,
-      streak: newStreak,
-      nextClaimTime: this.getNextResetTime(now),
-    }
+    return currentStreak
   }
 
   /**
@@ -270,50 +223,229 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Get current pool balance
+   * Claim quarters from the pool
    */
-  async getPoolBalance(): Promise<number> {
-    // In production: read from smart contract
-    // For now: mock implementation
-    // TODO: Integrate with actual LostFoundPool contract
-    return 50 // Mock: 50 quarters in pool
+  async claimFromPool(walletAddress: string, playerId?: string): Promise<ClaimResult> {
+    const now = Date.now()
+
+    // Check cooldown
+    const cooldownCheck = await this.canClaim(walletAddress)
+    if (!cooldownCheck.allowed) {
+      const claimState = await this.getClaimState(walletAddress)
+      return {
+        claimed: 0,
+        poolBalanceAfter: (await this.getPoolState()).balance,
+        streak: claimState?.streak || 0,
+        nextClaimTime: cooldownCheck.nextClaimTime!,
+        cooldownActive: true,
+      }
+    }
+
+    // Get current claim state
+    const claimState = await this.getClaimState(walletAddress)
+    const currentStreak = claimState?.streak || 0
+    const lastClaimTime = claimState?.last_claim_time ? new Date(claimState.last_claim_time) : null
+
+    // Calculate new streak
+    const newStreak = this.calculateNewStreak(lastClaimTime, currentStreak, now)
+
+    // Get max claimable based on streak
+    const maxClaimable = this.getMaxClaimable(newStreak)
+    const poolState = await this.getPoolState()
+    const claimed = Math.min(maxClaimable, poolState.balance)
+
+    if (claimed === 0) {
+      return {
+        claimed: 0,
+        poolBalanceAfter: poolState.balance,
+        streak: newStreak,
+        nextClaimTime: this.getNextResetTime(now),
+      }
+    }
+
+    // Execute on-chain claim
+    let txHash: string | undefined
+    try {
+      txHash = await this.executeOnChainClaim(walletAddress as Address, claimed)
+      logger.info({ walletAddress, claimed, txHash }, 'On-chain claim executed')
+    } catch (error) {
+      logger.error({ error, walletAddress, claimed }, 'Failed to execute on-chain claim')
+      throw error
+    }
+
+    // Update pool balance in database
+    const newPoolBalance = poolState.balance - claimed
+    await supabase
+      .from('lost_found_pool')
+      .update({
+        balance: newPoolBalance,
+        total_claimed: poolState.totalClaimed + claimed,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', (await this.getPoolRecord()).id)
+
+    // Update or create claim state
+    await supabase
+      .from('pool_claims')
+      .upsert({
+        wallet_address: walletAddress.toLowerCase(),
+        player_id: playerId || null,
+        last_claim_time: new Date().toISOString(),
+        streak: newStreak,
+        total_claimed: (claimState?.total_claimed || 0) + claimed,
+      }, { onConflict: 'wallet_address' })
+
+    // Record claim history
+    await supabase.from('pool_claim_history').insert({
+      player_id: playerId || null,
+      wallet_address: walletAddress.toLowerCase(),
+      quarters_claimed: claimed,
+      streak_at_claim: newStreak,
+      pool_balance_after: newPoolBalance,
+      tx_hash: txHash,
+    })
+
+    logger.info({ walletAddress, claimed, newStreak, txHash }, 'Player claimed from pool')
+
+    return {
+      claimed,
+      poolBalanceAfter: newPoolBalance,
+      streak: newStreak,
+      nextClaimTime: this.getNextResetTime(now),
+      txHash,
+    }
+  }
+
+  /**
+   * Execute on-chain claim via PoolPayout contract
+   */
+  private async executeOnChainClaim(player: Address, quarters: number): Promise<string> {
+    if (!this.walletClient || !this.account) {
+      throw new Error('Wallet client not configured')
+    }
+
+    const amount = BigInt(quarters) * QUARTER_AMOUNT
+
+    const { request } = await this.publicClient.simulateContract({
+      address: contractAddresses.poolPayout,
+      abi: poolPayoutAbi,
+      functionName: 'claim',
+      args: [player, amount],
+      account: this.account,
+    })
+
+    const hash = await this.walletClient.writeContract(request)
+
+    // Wait for confirmation
+    await this.publicClient.waitForTransactionReceipt({ hash })
+
+    return hash
+  }
+
+  /**
+   * Get current pool balance from contract
+   */
+  async getContractBalance(): Promise<{ balance: bigint; quarterBalance: bigint }> {
+    const [balance, quarterBalance] = await Promise.all([
+      this.publicClient.readContract({
+        address: contractAddresses.poolPayout,
+        abi: poolPayoutAbi,
+        functionName: 'getBalance',
+      }) as Promise<bigint>,
+      this.publicClient.readContract({
+        address: contractAddresses.poolPayout,
+        abi: poolPayoutAbi,
+        functionName: 'getQuarterBalance',
+      }) as Promise<bigint>,
+    ])
+
+    return { balance, quarterBalance }
+  }
+
+  /**
+   * Get pool state from database
+   */
+  async getPoolState(): Promise<PoolState> {
+    const record = await this.getPoolRecord()
+    return {
+      balance: record.balance,
+      totalReceived: record.total_received,
+      totalClaimed: record.total_claimed,
+      totalOverflow: record.total_overflow,
+    }
+  }
+
+  /**
+   * Get the singleton pool record from database
+   */
+  private async getPoolRecord() {
+    const { data, error } = await supabase
+      .from('lost_found_pool')
+      .select('*')
+      .single()
+
+    if (error || !data) {
+      logger.error({ error }, 'Failed to get pool record')
+      throw new Error('Failed to get pool record')
+    }
+
+    return data
+  }
+
+  /**
+   * Get claim state for a wallet
+   */
+  private async getClaimState(walletAddress: string) {
+    const { data } = await supabase
+      .from('pool_claims')
+      .select('*')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .single()
+
+    return data
   }
 
   /**
    * Get pool statistics
    */
-  async getPoolStats(): Promise<PoolState> {
-    // TODO: Read from contract/database
+  async getPoolStats(): Promise<PoolState & { contractBalance: string; contractQuarters: number }> {
+    const [poolState, contractBalances] = await Promise.all([
+      this.getPoolState(),
+      this.getContractBalance(),
+    ])
+
     return {
-      balance: await this.getPoolBalance(),
-      totalReceived: 0,
-      totalClaimed: 0,
-      totalOverflowToStaking: 0,
-      totalOverflowToOperations: 0,
+      ...poolState,
+      contractBalance: formatEther(contractBalances.balance),
+      contractQuarters: Number(contractBalances.quarterBalance),
     }
   }
 
-  // ============ Private Methods ============
+  /**
+   * Get claim info for a wallet
+   */
+  async getClaimInfo(walletAddress: string): Promise<{
+    canClaim: boolean
+    nextClaimTime?: Date
+    streak: number
+    maxClaimable: number
+    totalClaimed: number
+  }> {
+    const [cooldownCheck, claimState] = await Promise.all([
+      this.canClaim(walletAddress),
+      this.getClaimState(walletAddress),
+    ])
 
-  private async depositToPool(quarters: number): Promise<void> {
-    // TODO: Call smart contract to deposit quarters to pool
-    console.log(`[Contract] Depositing ${quarters}Q to Lost & Found Pool`)
-  }
+    const streak = claimState?.streak || 0
+    const maxClaimable = this.getMaxClaimable(cooldownCheck.allowed ? streak + 1 : streak)
 
-  private async withdrawFromPool(quarters: number, playerId: string): Promise<void> {
-    // TODO: Call smart contract to withdraw quarters from pool
-    console.log(`[Contract] Withdrawing ${quarters}Q from pool for player ${playerId}`)
-  }
-
-  private async sendToStakingRewards(quarters: number): Promise<void> {
-    // TODO: Call smart contract to send quarters to staking rewards pool
-    // This happens AUTOMATICALLY when overflow occurs
-    console.log(`[Contract] AUTO-DISTRIBUTING ${quarters}Q to Staking Rewards Pool`)
-  }
-
-  private async sendToOperations(quarters: number): Promise<void> {
-    // TODO: Call smart contract to send quarters to operations wallet
-    console.log(`[Contract] Sending ${quarters}Q to Operations`)
+    return {
+      canClaim: cooldownCheck.allowed,
+      nextClaimTime: cooldownCheck.nextClaimTime,
+      streak,
+      maxClaimable,
+      totalClaimed: claimState?.total_claimed || 0,
+    }
   }
 }
 
