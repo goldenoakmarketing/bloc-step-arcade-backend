@@ -91,22 +91,26 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 // Start server
 async function start(): Promise<void> {
   try {
-    // Start event listener in background
-    eventListenerService.start().catch((error) => {
-      logger.error({ error }, 'Event listener error');
-    });
-
-    // Initialize leaderboards
-    leaderboardService.refreshAllLeaderboards().catch((error) => {
-      logger.warn({ error }, 'Initial leaderboard refresh failed');
-    });
-
-    // Schedule periodic leaderboard refresh (every 5 minutes)
-    setInterval(() => {
-      leaderboardService.refreshAllLeaderboards().catch((error) => {
-        logger.warn({ error }, 'Scheduled leaderboard refresh failed');
+    if (config.mockMode) {
+      logger.info('Running in MOCK MODE - blockchain and database services disabled');
+    } else {
+      // Start event listener in background
+      eventListenerService.start().catch((error) => {
+        logger.error({ error }, 'Event listener error');
       });
-    }, 5 * 60 * 1000);
+
+      // Initialize leaderboards
+      leaderboardService.refreshAllLeaderboards().catch((error) => {
+        logger.warn({ error }, 'Initial leaderboard refresh failed');
+      });
+
+      // Schedule periodic leaderboard refresh (every 5 minutes)
+      setInterval(() => {
+        leaderboardService.refreshAllLeaderboards().catch((error) => {
+          logger.warn({ error }, 'Scheduled leaderboard refresh failed');
+        });
+      }, 5 * 60 * 1000);
+    }
 
     // Start HTTP server
     app.listen(config.port, () => {

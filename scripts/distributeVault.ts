@@ -11,9 +11,20 @@
 import { createPublicClient, createWalletClient, http, formatEther } from 'viem'
 import { base } from 'viem/chains'
 import { privateKeyToAccount } from 'viem/accounts'
-import dotenv from 'dotenv'
+import * as dotenv from 'dotenv'
+import { fileURLToPath } from 'url'
+import { dirname, join } from 'path'
 
-dotenv.config()
+// Load .env from project root
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
+dotenv.config({ path: join(__dirname, '..', '.env') })
+
+// Force stdout flush on Windows
+const log = (...args: unknown[]) => {
+  console.log(...args)
+  if (process.stdout.write) process.stdout.write('')
+}
 
 // Contract addresses
 const ARCADE_VAULT = '0x04bA29B0aD6bAcFA0236Fce688a7536ADfc5F17B' as const
@@ -72,10 +83,10 @@ async function main() {
     transport: http('https://mainnet.base.org'),
   })
 
-  console.log('=== Weekly Vault Distribution ===')
-  console.log(`Caller: ${account.address}`)
-  console.log(`Vault: ${ARCADE_VAULT}`)
-  console.log('')
+  log('=== Weekly Vault Distribution ===')
+  log(`Caller: ${account.address}`)
+  log(`Vault: ${ARCADE_VAULT}`)
+  log('')
 
   // Check current state
   const [vaultBalance, timeUntilNext] = await Promise.all([
@@ -91,20 +102,20 @@ async function main() {
     }),
   ])
 
-  console.log(`Vault Balance: ${formatEther(vaultBalance)} BLOC`)
-  console.log(`Time Until Next Distribution: ${Number(timeUntilNext)} seconds`)
-  console.log('')
+  log(`Vault Balance: ${formatEther(vaultBalance)} BLOC`)
+  log(`Time Until Next Distribution: ${Number(timeUntilNext)} seconds`)
+  log('')
 
   // Check if distribution is allowed
   if (timeUntilNext > 0n) {
     const hours = Math.floor(Number(timeUntilNext) / 3600)
     const days = Math.floor(hours / 24)
-    console.log(`Cannot distribute yet. Wait ${days} days, ${hours % 24} hours.`)
+    log(`Cannot distribute yet. Wait ${days} days, ${hours % 24} hours.`)
     process.exit(0)
   }
 
   if (vaultBalance === 0n) {
-    console.log('Vault balance is 0. Nothing to distribute.')
+    log('Vault balance is 0. Nothing to distribute.')
     process.exit(0)
   }
 
@@ -113,14 +124,14 @@ async function main() {
   const stabilityAmt = (vaultBalance * 2500n) / 10000n // 25%
   const profitAmt = vaultBalance - stakingAmt - stabilityAmt // 15%
 
-  console.log('Distribution Preview:')
-  console.log(`  Staking Pool (60%): ${formatEther(stakingAmt)} BLOC`)
-  console.log(`  Stability Reserve (25%): ${formatEther(stabilityAmt)} BLOC`)
-  console.log(`  Profit Wallet (15%): ${formatEther(profitAmt)} BLOC`)
-  console.log('')
+  log('Distribution Preview:')
+  log(`  Staking Pool (60%): ${formatEther(stakingAmt)} BLOC`)
+  log(`  Stability Reserve (25%): ${formatEther(stabilityAmt)} BLOC`)
+  log(`  Profit Wallet (15%): ${formatEther(profitAmt)} BLOC`)
+  log('')
 
   // Execute distribution
-  console.log('Executing distributeVault()...')
+  log('Executing distributeVault()...')
 
   try {
     const hash = await walletClient.writeContract({
@@ -129,14 +140,14 @@ async function main() {
       functionName: 'distributeVault',
     })
 
-    console.log(`Transaction submitted: ${hash}`)
+    log(`Transaction submitted: ${hash}`)
 
     const receipt = await publicClient.waitForTransactionReceipt({ hash })
 
     if (receipt.status === 'success') {
-      console.log('Distribution successful!')
-      console.log(`Block: ${receipt.blockNumber}`)
-      console.log(`Gas used: ${receipt.gasUsed}`)
+      log('Distribution successful!')
+      log(`Block: ${receipt.blockNumber}`)
+      log(`Gas used: ${receipt.gasUsed}`)
     } else {
       console.error('Transaction failed!')
       process.exit(1)
