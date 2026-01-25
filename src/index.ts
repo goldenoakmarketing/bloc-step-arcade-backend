@@ -12,6 +12,7 @@ import gameRoutes from './api/routes/game.routes.js';
 import playerRoutes from './api/routes/player.routes.js';
 import leaderboardRoutes from './api/routes/leaderboard.routes.js';
 import webhookRoutes from './api/routes/webhook.routes.js';
+import poolRoutes from './api/routes/pool.routes.js';
 
 const app = express();
 
@@ -59,6 +60,7 @@ app.use('/api/v1/game', gameRoutes);
 app.use('/api/v1/players', playerRoutes);
 app.use('/api/v1/leaderboards', leaderboardRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/pool', poolRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
