@@ -155,6 +155,21 @@ export class PlayerRepository {
     return count || 0;
   }
 
+  async getTotalDonated(): Promise<bigint> {
+    const { data, error } = await supabase
+      .from('players')
+      .select('total_yeeted');
+
+    if (error) {
+      logger.error({ error }, 'Error getting total donated');
+      return BigInt(0);
+    }
+
+    // Sum all total_yeeted values
+    const total = (data || []).reduce((sum, player) => sum + (player.total_yeeted || 0), 0);
+    return BigInt(total);
+  }
+
   private mapToPlayer(data: {
     id: string;
     wallet_address: string;
