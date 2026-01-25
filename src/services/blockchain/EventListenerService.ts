@@ -27,9 +27,30 @@ interface EventHandler {
 export class EventListenerService {
   private isRunning = false;
   private handlers: EventHandler[] = [];
+  private initializedStartBlock: bigint | null = null;
 
   constructor() {
     this.registerHandlers();
+  }
+
+  /**
+   * Get the effective start block - if START_BLOCK is 0, use current block
+   */
+  private async getEffectiveStartBlock(): Promise<bigint> {
+    if (this.initializedStartBlock !== null) {
+      return this.initializedStartBlock;
+    }
+
+    if (config.eventListener.startBlock === 0n) {
+      // If START_BLOCK is 0, start from current block (don't backfill)
+      const currentBlock = await publicClient.getBlockNumber();
+      this.initializedStartBlock = currentBlock;
+      logger.info({ startBlock: currentBlock.toString() }, 'START_BLOCK=0, starting from current block');
+      return currentBlock;
+    }
+
+    this.initializedStartBlock = config.eventListener.startBlock;
+    return config.eventListener.startBlock;
   }
 
   private registerHandlers() {
@@ -117,17 +138,19 @@ export class EventListenerService {
 
   private async pollEvents(): Promise<void> {
     const currentBlock = await publicClient.getBlockNumber();
+    const effectiveStartBlock = await this.getEffectiveStartBlock();
 
     for (const handler of this.handlers) {
       const syncState = await this.getSyncState(handler.contractName);
-      const fromBlock = syncState ? BigInt(syncState.last_synced_block) + 1n : config.eventListener.startBlock;
+      const fromBlock = syncState ? BigInt(syncState.last_synced_block) + 1n : effectiveStartBlock;
 
       if (fromBlock > currentBlock) {
         continue;
       }
 
       const toBlock = currentBlock;
-      const batchSize = 2000n;
+      // Use small batch size for Alchemy free tier (10 blocks max)
+      const batchSize = 10n;
 
       for (let start = fromBlock; start <= toBlock; start += batchSize) {
         const end = start + batchSize - 1n > toBlock ? toBlock : start + batchSize - 1n;

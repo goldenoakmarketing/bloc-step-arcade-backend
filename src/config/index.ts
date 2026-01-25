@@ -16,12 +16,12 @@ const envSchema = z.object({
   RPC_URL: z.string().default('https://mainnet.base.org'),
   GAME_SERVER_PRIVATE_KEY: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000000000000000000000000000001'),
 
-  // Contract Addresses
-  ARCADE_VAULT_ADDRESS: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000001'),
-  TIP_BOT_ADDRESS: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000002'),
-  YEET_ENGINE_ADDRESS: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000003'),
-  STAKING_POOL_ADDRESS: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000004'),
-  BLOC_TOKEN_ADDRESS: z.string().startsWith('0x').default('0x0000000000000000000000000000000000000005'),
+  // Contract Addresses (Base Mainnet)
+  ARCADE_VAULT_ADDRESS: z.string().startsWith('0x').default('0x04bA29B0aD6bAcFA0236Fce688a7536ADfc5F17B'),
+  TIP_BOT_ADDRESS: z.string().startsWith('0x').default('0xAAc499D71F642F134AdC699b3f11572163A7FD3E'),
+  YEET_ENGINE_ADDRESS: z.string().startsWith('0x').default('0xcD4ac644DB51455d736E0e3aE416C3c373185e48'),
+  STAKING_POOL_ADDRESS: z.string().startsWith('0x').default('0xa3465cfD544c6B11C3BBeD5203AEC739976059D4'),
+  BLOC_TOKEN_ADDRESS: z.string().startsWith('0x').default('0x022c6cb9Fd69A99cF030cB43e3c28BF82bF68Fe9'),
   POOL_PAYOUT_ADDRESS: z.string().startsWith('0x').default('0xb440AE06aC5ceF3Eb837FDF353459Fb8eFF3556d'),
 
   // Farcaster
