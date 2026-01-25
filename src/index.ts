@@ -18,8 +18,17 @@ const app = express();
 
 // Security middleware
 app.use(helmet());
+
+// CORS configuration
+const allowedOrigins = config.isDev
+  ? '*'
+  : process.env.ALLOWED_ORIGINS?.split(',') || [
+      'https://blocsteparcade.netlify.app',
+      'https://bloc-step-arcade.netlify.app',
+    ];
+
 app.use(cors({
-  origin: config.isDev ? '*' : process.env.ALLOWED_ORIGINS?.split(',') || [],
+  origin: allowedOrigins,
   credentials: true,
 }));
 
