@@ -56,18 +56,20 @@ router.post(
   })
 );
 
-// Debug: Get stakers from blockchain
+// Debug: Get staked balance for a wallet
 router.get(
-  '/debug/stakers',
+  '/debug/staked/:wallet',
   standardRateLimit,
-  asyncHandler(async (_req, res) => {
-    const stakers = await stakingService.getStakersFromBlockchain();
+  asyncHandler(async (req, res) => {
+    const wallet = req.params.wallet;
+    const balance = await stakingService.getStakedBalance(wallet as `0x${string}`);
 
     res.json({
       success: true,
       data: {
-        count: stakers.length,
-        stakers,
+        wallet,
+        stakedBalance: balance.toString(),
+        stakedBalanceFormatted: (Number(balance) / 1e18).toFixed(2),
       },
     });
   })
