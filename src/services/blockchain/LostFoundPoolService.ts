@@ -288,36 +288,57 @@ export class LostFoundPoolService {
 
     // Update pool balance in database
     const newPoolBalance = poolState.balance - claimed
-    await supabase
+    const poolRecord = await this.getPoolRecord()
+    const { error: poolUpdateError } = await supabase
       .from('lost_found_pool')
       .update({
         balance: newPoolBalance,
         total_claimed: poolState.totalClaimed + claimed,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', (await this.getPoolRecord()).id)
+      .eq('id', poolRecord.id)
+
+    if (poolUpdateError) {
+      logger.error({
+        errorMessage: poolUpdateError.message,
+        errorCode: poolUpdateError.code,
+        poolId: poolRecord.id,
+      }, 'Failed to update pool balance')
+      throw new Error(`Failed to update pool: ${poolUpdateError.message}`)
+    }
 
     // Update or create claim state
     const claimTime = new Date().toISOString()
+    const upsertData = {
+      wallet_address: walletAddress.toLowerCase(),
+      player_id: playerId || null,
+      last_claim_time: claimTime,
+      streak: newStreak,
+      total_claimed: (claimState?.total_claimed || 0) + claimed,
+    }
+
+    logger.debug({ upsertData }, 'Attempting to upsert claim state')
+
     const { error: upsertError } = await supabase
       .from('pool_claims')
-      .upsert({
-        wallet_address: walletAddress.toLowerCase(),
-        player_id: playerId || null,
-        last_claim_time: claimTime,
-        streak: newStreak,
-        total_claimed: (claimState?.total_claimed || 0) + claimed,
-      }, { onConflict: 'wallet_address' })
+      .upsert(upsertData, { onConflict: 'wallet_address' })
 
     if (upsertError) {
-      logger.error({ error: upsertError, walletAddress }, 'Failed to update claim state')
-      throw new Error('Failed to record claim')
+      logger.error({
+        errorMessage: upsertError.message,
+        errorCode: upsertError.code,
+        errorDetails: upsertError.details,
+        errorHint: upsertError.hint,
+        walletAddress,
+        upsertData,
+      }, 'Failed to update claim state - Supabase error')
+      throw new Error(`Failed to record claim: ${upsertError.message}`)
     }
 
     logger.info({ walletAddress, claimTime, newStreak }, 'Claim state updated')
 
     // Record claim history
-    await supabase.from('pool_claim_history').insert({
+    const { error: historyError } = await supabase.from('pool_claim_history').insert({
       player_id: playerId || null,
       wallet_address: walletAddress.toLowerCase(),
       quarters_claimed: claimed,
@@ -325,6 +346,15 @@ export class LostFoundPoolService {
       pool_balance_after: newPoolBalance,
       tx_hash: txHash,
     })
+
+    if (historyError) {
+      // Log but don't throw - claim already succeeded, history is secondary
+      logger.warn({
+        errorMessage: historyError.message,
+        errorCode: historyError.code,
+        walletAddress,
+      }, 'Failed to record claim history (non-fatal)')
+    }
 
     logger.info({ walletAddress, claimed, newStreak, txHash }, 'Player claimed from pool')
 
