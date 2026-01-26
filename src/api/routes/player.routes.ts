@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { arcadeVaultService } from '../../services/blockchain/ArcadeVaultService.js';
+import { stakingService } from '../../services/blockchain/StakingService.js';
 import { extractWalletAddress, loadPlayer } from '../middleware/auth.js';
 import { standardRateLimit, strictRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
@@ -25,8 +26,16 @@ router.get(
 
     const player = await playerRepository.findOrCreate(wallet.toLowerCase() as Address);
 
-    // Get fresh balance from chain
-    const timeBalance = await arcadeVaultService.getTimeBalance(player.walletAddress);
+    // Get fresh balances from chain
+    const [timeBalance, stakedBalance] = await Promise.all([
+      arcadeVaultService.getTimeBalance(player.walletAddress),
+      stakingService.getStakedBalance(player.walletAddress),
+    ]);
+
+    // Update cached staked balance if it changed
+    if (stakedBalance !== player.cachedStakedBalance) {
+      await playerRepository.updateCachedStakedBalance(player.walletAddress, stakedBalance);
+    }
 
     res.json({
       success: true,
@@ -36,7 +45,7 @@ router.get(
         farcasterFid: player.farcasterFid,
         farcasterUsername: player.farcasterUsername,
         timeBalance: timeBalance.toString(),
-        cachedStakedBalance: player.cachedStakedBalance.toString(),
+        cachedStakedBalance: stakedBalance.toString(),
         stats: {
           totalTimePurchased: player.totalTimePurchased.toString(),
           totalTimeConsumed: player.totalTimeConsumed.toString(),
@@ -118,20 +127,25 @@ router.get(
       throw new ValidationError('Invalid wallet address');
     }
 
-    const player = await playerRepository.findByWallet(wallet.toLowerCase() as Address);
+    const player = await playerRepository.findOrCreate(wallet.toLowerCase() as Address);
 
-    if (!player) {
-      throw new NotFoundError('Player');
+    // Get fresh balances from chain
+    const [timeBalance, stakedBalance] = await Promise.all([
+      arcadeVaultService.getTimeBalance(player.walletAddress),
+      stakingService.getStakedBalance(player.walletAddress),
+    ]);
+
+    // Update cached staked balance if it changed
+    if (stakedBalance !== player.cachedStakedBalance) {
+      await playerRepository.updateCachedStakedBalance(player.walletAddress, stakedBalance);
     }
-
-    const timeBalance = await arcadeVaultService.getTimeBalance(player.walletAddress);
 
     res.json({
       success: true,
       data: {
         walletAddress: player.walletAddress,
         timeBalance: timeBalance.toString(),
-        stakedBalance: player.cachedStakedBalance.toString(),
+        stakedBalance: stakedBalance.toString(),
         totalTimePurchased: player.totalTimePurchased.toString(),
         totalTimeConsumed: player.totalTimeConsumed.toString(),
         totalYeeted: player.totalYeeted.toString(),

@@ -2,7 +2,6 @@ import { supabase } from '../../config/supabase.js';
 import { createChildLogger } from '../../utils/logger.js';
 import { leaderboardRepository } from '../../repositories/LeaderboardRepository.js';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
-import { stakingService } from '../blockchain/StakingService.js';
 import type { Address, LeaderboardEntry, LeaderboardType } from '../../types/index.js';
 
 const logger = createChildLogger('LeaderboardService');
@@ -136,9 +135,7 @@ export class LeaderboardService {
   }
 
   private async computeStakingLeaderboard() {
-    // Sync staking balances from blockchain before computing leaderboard
-    await stakingService.syncAllStakingBalances();
-
+    // Staking balances are updated when users visit their profile
     const players = await playerRepository.getTopByStaking(100);
 
     return players.map((player) => ({
