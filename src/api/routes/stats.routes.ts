@@ -28,13 +28,27 @@ router.get(
 router.get(
   '/',
   standardRateLimit,
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req, res) => {
     const [totalPlayers, totalDonated, totalStaked, totalTimePlayed] = await Promise.all([
       playerRepository.count(),
       playerRepository.getTotalDonated(),
       playerRepository.getTotalStaked(),
       playerRepository.getTotalTimePlayed(),
     ]);
+
+    // Debug mode - include player staking details
+    let debugStaking = undefined;
+    if (req.query.debug === 'true') {
+      const { data: players } = await supabase
+        .from('players')
+        .select('wallet_address, cached_staked_balance');
+
+      debugStaking = (players || []).map(p => ({
+        wallet: p.wallet_address?.slice(-8),
+        balance: p.cached_staked_balance,
+        type: typeof p.cached_staked_balance,
+      })).sort((a, b) => Number(b.balance) - Number(a.balance));
+    }
 
     res.json({
       success: true,
@@ -43,6 +57,7 @@ router.get(
         totalDonated: Number(totalDonated),
         totalStaked: Number(totalStaked),
         totalTimePlayed: Number(totalTimePlayed),
+        debugStaking,
       },
     });
   })
