@@ -104,15 +104,19 @@ export class StakingService {
 
     for (const player of players) {
       try {
-        const balance = await this.getStakedBalance(player.wallet_address as Address);
+        const balanceWei = await this.getStakedBalance(player.wallet_address as Address);
+
+        // Convert from wei (18 decimals) to tokens for storage
+        // This avoids BigInt precision issues with Number()
+        const balanceTokens = balanceWei / BigInt(10 ** 18);
 
         await supabase
           .from('players')
-          .update({ cached_staked_balance: Number(balance) })
+          .update({ cached_staked_balance: Number(balanceTokens) })
           .eq('id', player.id);
 
-        if (balance > 0) {
-          logger.info({ wallet: player.wallet_address, balance: balance.toString() }, 'Updated staking balance');
+        if (balanceWei > 0) {
+          logger.info({ wallet: player.wallet_address, balanceWei: balanceWei.toString(), balanceTokens: balanceTokens.toString() }, 'Updated staking balance');
         }
         synced++;
       } catch (err) {

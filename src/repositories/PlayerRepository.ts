@@ -102,10 +102,12 @@ export class PlayerRepository {
       .eq('wallet_address', walletAddress.toLowerCase());
   }
 
-  async updateCachedStakedBalance(walletAddress: Address, stakedBalance: bigint): Promise<void> {
+  async updateCachedStakedBalance(walletAddress: Address, stakedBalanceWei: bigint): Promise<void> {
+    // Convert from wei (18 decimals) to tokens for storage
+    const balanceTokens = stakedBalanceWei / BigInt(10 ** 18);
     await supabase
       .from('players')
-      .update({ cached_staked_balance: Number(stakedBalance) })
+      .update({ cached_staked_balance: Number(balanceTokens) })
       .eq('wallet_address', walletAddress.toLowerCase());
   }
 
