@@ -23,11 +23,7 @@ router.get(
       throw new ValidationError('Invalid wallet address');
     }
 
-    const player = await playerRepository.findByWallet(wallet.toLowerCase() as Address);
-
-    if (!player) {
-      throw new NotFoundError('Player');
-    }
+    const player = await playerRepository.findOrCreate(wallet.toLowerCase() as Address);
 
     // Get fresh balance from chain
     const timeBalance = await arcadeVaultService.getTimeBalance(player.walletAddress);
