@@ -1,5 +1,6 @@
 import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D } from '@napi-rs/canvas';
 import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
+import { gameChampionRepository } from '../../repositories/GameChampionRepository.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { GameId } from '../../types/index.js';
 import { writeFileSync, existsSync, mkdirSync } from 'fs';
@@ -203,50 +204,85 @@ export class LeaderboardImageService {
     const pfpY = 210;
     const pfpSize = 160;
 
-    const topPlayer = entries[0];
-    if (topPlayer) {
-      const fid = topPlayer.farcasterFid;
+    // Try to get champion PFP from cached game_champions table first
+    const champion = await gameChampionRepository.getChampion(gameId);
+    const pfpUrl = champion?.farcasterPfp;
 
-      if (fid) {
+    if (pfpUrl) {
+      try {
+        const img = await loadImage(pfpUrl);
+
+        ctx.save();
+
+        // Draw border
+        ctx.strokeStyle = COLORS.neonYellow;
+        ctx.lineWidth = 4;
+        ctx.strokeRect(pfpX - 4, pfpY - 4, pfpSize + 8, pfpSize + 8);
+
+        // Clip to square
+        ctx.beginPath();
+        ctx.rect(pfpX, pfpY, pfpSize, pfpSize);
+        ctx.clip();
+
+        // Draw image
+        ctx.drawImage(img, pfpX, pfpY, pfpSize, pfpSize);
+
+        ctx.restore();
+
+        // Draw crown above PFP
+        ctx.fillStyle = COLORS.neonYellow;
+        ctx.font = `bold 28px ${getFontFamily()}`;
+        ctx.textAlign = 'center';
+        ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
+      } catch (error) {
+        logger.warn({ error, pfpUrl }, 'Failed to load champion PFP');
+        await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
+      }
+    } else {
+      // Fall back to fetching from API if no cached PFP
+      const topPlayer = entries[0];
+      if (topPlayer?.farcasterFid) {
         try {
-          const pfpUrl = await this.getFarcasterPfp(fid);
-          if (pfpUrl) {
-            const img = await loadImage(pfpUrl);
+          const fetchedPfpUrl = await this.getFarcasterPfp(topPlayer.farcasterFid);
+          if (fetchedPfpUrl) {
+            const img = await loadImage(fetchedPfpUrl);
 
             ctx.save();
-
-            // Draw border
             ctx.strokeStyle = COLORS.neonYellow;
             ctx.lineWidth = 4;
             ctx.strokeRect(pfpX - 4, pfpY - 4, pfpSize + 8, pfpSize + 8);
-
-            // Clip to square
             ctx.beginPath();
             ctx.rect(pfpX, pfpY, pfpSize, pfpSize);
             ctx.clip();
-
-            // Draw image
             ctx.drawImage(img, pfpX, pfpY, pfpSize, pfpSize);
-
             ctx.restore();
 
-            // Draw crown above PFP
             ctx.fillStyle = COLORS.neonYellow;
             ctx.font = `bold 28px ${getFontFamily()}`;
             ctx.textAlign = 'center';
             ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
+
+            // Update the champion record with the PFP for next time
+            if (topPlayer) {
+              await gameChampionRepository.updateChampion(
+                gameId,
+                topPlayer.walletAddress,
+                topPlayer.score,
+                topPlayer.farcasterFid,
+                topPlayer.farcasterUsername,
+                fetchedPfpUrl
+              );
+            }
           } else {
             await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
           }
         } catch (error) {
-          logger.warn({ error, fid }, 'Failed to load PFP');
+          logger.warn({ error }, 'Failed to load PFP from API');
           await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
         }
       } else {
         await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
       }
-    } else {
-      await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
     }
 
     // Draw leaderboard entries

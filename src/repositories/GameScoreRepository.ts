@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { createChildLogger } from '../utils/logger.js';
+import { gameChampionRepository } from './GameChampionRepository.js';
 import type { Address, GameId, GameScore } from '../types/index.js';
 
 const logger = createChildLogger('GameScoreRepository');
@@ -40,7 +41,46 @@ export class GameScoreRepository {
       throw new Error('Failed to submit score');
     }
 
+    // Check if this score makes them #1 and update the champion
+    await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername);
+
     return this.mapToGameScore(data);
+  }
+
+  private async checkAndUpdateChampion(
+    gameId: GameId,
+    walletAddress: Address,
+    score: number,
+    farcasterFid?: number,
+    farcasterUsername?: string
+  ): Promise<void> {
+    try {
+      // Get current champion
+      const currentChampion = await gameChampionRepository.getChampion(gameId);
+
+      // Check if this score beats the current champion
+      if (!currentChampion || BigInt(score) > currentChampion.score) {
+        logger.info({ gameId, walletAddress, score, previousScore: currentChampion?.score?.toString() }, 'New champion!');
+
+        // Fetch PFP if they have a Farcaster account
+        let pfpUrl: string | undefined;
+        if (farcasterFid) {
+          pfpUrl = (await gameChampionRepository.fetchAndStorePfp(farcasterFid)) || undefined;
+        }
+
+        await gameChampionRepository.updateChampion(
+          gameId,
+          walletAddress,
+          BigInt(score),
+          farcasterFid,
+          farcasterUsername,
+          pfpUrl
+        );
+      }
+    } catch (error) {
+      logger.error({ error, gameId, walletAddress, score }, 'Error checking/updating champion');
+      // Don't throw - this is non-critical
+    }
   }
 
   async getTopScores(gameId: GameId, limit = 10): Promise<GameLeaderboardEntry[]> {

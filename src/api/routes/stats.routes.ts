@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { stakingService } from '../../services/blockchain/StakingService.js';
+import { leaderboardService } from '../../services/analytics/LeaderboardService.js';
 import { standardRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
@@ -56,6 +57,41 @@ router.post(
     res.json({
       success: true,
       data: result,
+    });
+  })
+);
+
+// Refresh all leaderboard caches
+router.post(
+  '/refresh-leaderboards',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    await leaderboardService.refreshAllLeaderboards();
+
+    res.json({
+      success: true,
+      message: 'All leaderboards refreshed',
+    });
+  })
+);
+
+// Full sync: sync staking + refresh leaderboards
+router.post(
+  '/full-sync',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    // First sync staking balances from blockchain
+    const stakingResult = await stakingService.syncAllStakingBalances();
+
+    // Then refresh all leaderboards
+    await leaderboardService.refreshAllLeaderboards();
+
+    res.json({
+      success: true,
+      data: {
+        stakingSync: stakingResult,
+        message: 'Full sync completed',
+      },
     });
   })
 );
