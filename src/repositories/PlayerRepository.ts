@@ -140,7 +140,7 @@ export class PlayerRepository {
   }
 
   async getTopByStaking(limit = 100): Promise<Player[]> {
-    // Fetch all players with staking balance, then sort in JS to avoid string sorting issues
+    // Fetch all players with staking balance, then sort in JS to handle string values
     const { data } = await supabase
       .from('players')
       .select('*')
@@ -148,26 +148,10 @@ export class PlayerRepository {
 
     if (!data || data.length === 0) return [];
 
-    // Debug: log raw data from Supabase
-    logger.info({
-      rawData: data.map(d => ({
-        wallet: d.wallet_address?.slice(-8),
-        balance: d.cached_staked_balance,
-        balanceType: typeof d.cached_staked_balance
-      }))
-    }, 'Raw staking data from Supabase');
-
-    // Sort by cached_staked_balance descending (as numbers)
+    // Sort by cached_staked_balance descending (convert to numbers for comparison)
     const sorted = data
       .sort((a, b) => Number(b.cached_staked_balance) - Number(a.cached_staked_balance))
       .slice(0, limit);
-
-    logger.info({
-      sortedData: sorted.map(d => ({
-        wallet: d.wallet_address?.slice(-8),
-        balance: d.cached_staked_balance
-      }))
-    }, 'Sorted staking data');
 
     return sorted.map(this.mapToPlayer);
   }
@@ -212,8 +196,8 @@ export class PlayerRepository {
       return BigInt(0);
     }
 
-    // Sum all total_yeeted values
-    const total = (data || []).reduce((sum, player) => sum + (player.total_yeeted || 0), 0);
+    // Sum all total_yeeted values (convert to number in case stored as string)
+    const total = (data || []).reduce((sum, player) => sum + Number(player.total_yeeted || 0), 0);
     return BigInt(total);
   }
 
@@ -227,7 +211,8 @@ export class PlayerRepository {
       return BigInt(0);
     }
 
-    const total = (data || []).reduce((sum, player) => sum + (player.cached_staked_balance || 0), 0);
+    // Convert string values to numbers before summing
+    const total = (data || []).reduce((sum, player) => sum + Number(player.cached_staked_balance || 0), 0);
     return BigInt(total);
   }
 
@@ -241,7 +226,8 @@ export class PlayerRepository {
       return BigInt(0);
     }
 
-    const total = (data || []).reduce((sum, player) => sum + (player.total_time_consumed || 0), 0);
+    // Convert to number in case stored as string
+    const total = (data || []).reduce((sum, player) => sum + Number(player.total_time_consumed || 0), 0);
     return BigInt(total);
   }
 

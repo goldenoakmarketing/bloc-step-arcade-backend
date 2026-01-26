@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { supabase } from '../../config/supabase.js';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { stakingService } from '../../services/blockchain/StakingService.js';
 import { leaderboardService } from '../../services/analytics/LeaderboardService.js';
@@ -28,27 +27,13 @@ router.get(
 router.get(
   '/',
   standardRateLimit,
-  asyncHandler(async (req, res) => {
+  asyncHandler(async (_req, res) => {
     const [totalPlayers, totalDonated, totalStaked, totalTimePlayed] = await Promise.all([
       playerRepository.count(),
       playerRepository.getTotalDonated(),
       playerRepository.getTotalStaked(),
       playerRepository.getTotalTimePlayed(),
     ]);
-
-    // Debug mode - include player staking details
-    let debugStaking = undefined;
-    if (req.query.debug === 'true') {
-      const { data: players } = await supabase
-        .from('players')
-        .select('wallet_address, cached_staked_balance');
-
-      debugStaking = (players || []).map(p => ({
-        wallet: p.wallet_address?.slice(-8),
-        balance: p.cached_staked_balance,
-        type: typeof p.cached_staked_balance,
-      })).sort((a, b) => Number(b.balance) - Number(a.balance));
-    }
 
     res.json({
       success: true,
@@ -57,7 +42,6 @@ router.get(
         totalDonated: Number(totalDonated),
         totalStaked: Number(totalStaked),
         totalTimePlayed: Number(totalTimePlayed),
-        debugStaking,
       },
     });
   })
@@ -109,33 +93,6 @@ router.post(
         stakingSync: stakingResult,
         message: 'Full sync completed',
       },
-    });
-  })
-);
-
-// Debug: Get all players' cached staking balances
-router.get(
-  '/debug-staking',
-  standardRateLimit,
-  asyncHandler(async (_req, res) => {
-    const { data } = await supabase
-      .from('players')
-      .select('wallet_address, cached_staked_balance');
-
-    const formatted = (data || []).map(d => ({
-      wallet: d.wallet_address,
-      balance: d.cached_staked_balance,
-      balanceType: typeof d.cached_staked_balance,
-      balanceAsNumber: Number(d.cached_staked_balance),
-    }));
-
-    // Sort in JS
-    formatted.sort((a, b) => b.balanceAsNumber - a.balanceAsNumber);
-
-    res.json({
-      success: true,
-      count: formatted.length,
-      data: formatted,
     });
   })
 );
