@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
+import { stakingService } from '../../services/blockchain/StakingService.js';
 import { standardRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
@@ -41,5 +42,18 @@ router.get(
   })
 );
 
+// Sync staking balances from blockchain
+router.post(
+  '/sync-staking',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    const result = await stakingService.syncAllStakingBalances();
+
+    res.json({
+      success: true,
+      data: result,
+    });
+  })
+);
 
 export default router;
