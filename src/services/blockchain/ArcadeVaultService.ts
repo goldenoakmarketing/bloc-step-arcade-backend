@@ -21,13 +21,18 @@ export class ArcadeVaultService {
   async getTimeBalance(player: Address): Promise<bigint> {
     logger.debug({ player }, 'Fetching time balance');
 
-    const balance = await retry(
-      () => this.contract.read.timeBalances([player]),
-      { retryIf: isRetryableError }
-    );
+    try {
+      const balance = await retry(
+        () => this.contract.read.timeBalances([player]),
+        { retryIf: isRetryableError }
+      );
 
-    logger.debug({ player, balance: balance.toString() }, 'Time balance fetched');
-    return balance;
+      logger.debug({ player, balance: balance.toString() }, 'Time balance fetched');
+      return balance;
+    } catch (error) {
+      logger.warn({ player, error }, 'Failed to fetch time balance, returning 0');
+      return BigInt(0);
+    }
   }
 
   async consumeTime(player: Address, seconds: bigint): Promise<`0x${string}`> {
