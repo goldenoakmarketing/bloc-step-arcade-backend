@@ -1,4 +1,4 @@
-import { createCanvas, loadImage } from 'canvas';
+import { createCanvas, loadImage } from '@napi-rs/canvas';
 import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { GameId } from '../../types/index.js';
