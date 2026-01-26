@@ -56,4 +56,21 @@ router.post(
   })
 );
 
+// Debug: Get stakers from blockchain
+router.get(
+  '/debug/stakers',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    const stakers = await stakingService.getStakersFromBlockchain();
+
+    res.json({
+      success: true,
+      data: {
+        count: stakers.length,
+        stakers,
+      },
+    });
+  })
+);
+
 export default router;
