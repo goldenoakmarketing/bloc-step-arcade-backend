@@ -20,12 +20,12 @@ export class StakingService {
 
   async getStakedBalance(player: Address): Promise<bigint> {
     try {
-      // Use getStakedBalance view function from StakingPool contract
-      const balance = await this.contract.read.getStakedBalance([player]);
-      logger.debug({ player, balance: balance.toString() }, 'Fetched staked balance');
+      // Use stakedBalances mapping from StakingPool contract (selector 0x3a02a42d)
+      const balance = await this.contract.read.stakedBalances([player]);
+      logger.info({ player, balance: balance.toString() }, 'Fetched staked balance');
       return balance;
     } catch (error) {
-      logger.warn({ player, error }, 'Failed to fetch staked balance');
+      logger.error({ player, error }, 'Failed to fetch staked balance');
       return BigInt(0);
     }
   }
