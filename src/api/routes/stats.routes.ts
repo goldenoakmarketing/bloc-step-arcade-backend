@@ -27,9 +27,11 @@ router.get(
   '/',
   standardRateLimit,
   asyncHandler(async (_req, res) => {
-    const [totalPlayers, totalDonated] = await Promise.all([
+    const [totalPlayers, totalDonated, totalStaked, totalTimePlayed] = await Promise.all([
       playerRepository.count(),
       playerRepository.getTotalDonated(),
+      playerRepository.getTotalStaked(),
+      playerRepository.getTotalTimePlayed(),
     ]);
 
     res.json({
@@ -37,6 +39,8 @@ router.get(
       data: {
         totalPlayers,
         totalDonated: Number(totalDonated),
+        totalStaked: Number(totalStaked),
+        totalTimePlayed: Number(totalTimePlayed),
       },
     });
   })

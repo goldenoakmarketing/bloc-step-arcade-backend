@@ -181,6 +181,81 @@ export class PlayerRepository {
     return BigInt(total);
   }
 
+  async getTotalStaked(): Promise<bigint> {
+    const { data, error } = await supabase
+      .from('players')
+      .select('cached_staked_balance');
+
+    if (error) {
+      logger.error({ error }, 'Error getting total staked');
+      return BigInt(0);
+    }
+
+    const total = (data || []).reduce((sum, player) => sum + (player.cached_staked_balance || 0), 0);
+    return BigInt(total);
+  }
+
+  async getTotalTimePlayed(): Promise<bigint> {
+    const { data, error } = await supabase
+      .from('players')
+      .select('total_time_consumed');
+
+    if (error) {
+      logger.error({ error }, 'Error getting total time played');
+      return BigInt(0);
+    }
+
+    const total = (data || []).reduce((sum, player) => sum + (player.total_time_consumed || 0), 0);
+    return BigInt(total);
+  }
+
+  async addTimeConsumed(walletAddress: Address, seconds: number): Promise<void> {
+    const player = await this.findOrCreate(walletAddress);
+    const { error } = await supabase
+      .from('players')
+      .update({ total_time_consumed: Number(player.totalTimeConsumed) + seconds })
+      .eq('id', player.id);
+    if (error) {
+      logger.error({ error, walletAddress, seconds }, 'Error adding time consumed');
+    }
+  }
+
+  async getPlayerRankByYeet(walletAddress: Address): Promise<number | null> {
+    const { data } = await supabase
+      .from('players')
+      .select('wallet_address, total_yeeted')
+      .gt('total_yeeted', 0)
+      .order('total_yeeted', { ascending: false });
+
+    if (!data) return null;
+    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+    return index >= 0 ? index + 1 : null;
+  }
+
+  async getPlayerRankByStaking(walletAddress: Address): Promise<number | null> {
+    const { data } = await supabase
+      .from('players')
+      .select('wallet_address, cached_staked_balance')
+      .gt('cached_staked_balance', 0)
+      .order('cached_staked_balance', { ascending: false });
+
+    if (!data) return null;
+    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+    return index >= 0 ? index + 1 : null;
+  }
+
+  async getPlayerRankByTimePlayed(walletAddress: Address): Promise<number | null> {
+    const { data } = await supabase
+      .from('players')
+      .select('wallet_address, total_time_consumed')
+      .gt('total_time_consumed', 0)
+      .order('total_time_consumed', { ascending: false });
+
+    if (!data) return null;
+    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+    return index >= 0 ? index + 1 : null;
+  }
+
   private mapToPlayer(data: {
     id: string;
     wallet_address: string;

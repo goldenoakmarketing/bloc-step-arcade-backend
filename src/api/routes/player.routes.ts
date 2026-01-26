@@ -157,6 +157,60 @@ router.get(
   })
 );
 
+// Get player ranks across all leaderboards
+router.get(
+  '/:wallet/ranks',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const wallet = req.params.wallet;
+
+    if (!wallet || !addressSchema.safeParse(wallet).success) {
+      throw new ValidationError('Invalid wallet address');
+    }
+
+    const [yeetRank, stakingRank, timePlayedRank] = await Promise.all([
+      playerRepository.getPlayerRankByYeet(wallet.toLowerCase() as Address),
+      playerRepository.getPlayerRankByStaking(wallet.toLowerCase() as Address),
+      playerRepository.getPlayerRankByTimePlayed(wallet.toLowerCase() as Address),
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        walletAddress: wallet.toLowerCase(),
+        yeetRank,
+        stakingRank,
+        timePlayedRank,
+      },
+    });
+  })
+);
+
+// Add time consumed to player stats
+router.post(
+  '/:wallet/add-time',
+  strictRateLimit,
+  asyncHandler(async (req, res) => {
+    const wallet = req.params.wallet;
+    const { seconds } = req.body;
+
+    if (!wallet || !addressSchema.safeParse(wallet).success) {
+      throw new ValidationError('Invalid wallet address');
+    }
+
+    if (typeof seconds !== 'number' || seconds <= 0) {
+      throw new ValidationError('Invalid seconds value');
+    }
+
+    await playerRepository.addTimeConsumed(wallet.toLowerCase() as Address, seconds);
+
+    res.json({
+      success: true,
+      message: `Added ${seconds} seconds to time consumed`,
+    });
+  })
+);
+
 // Helper function to format duration
 function formatDuration(seconds: number): string {
   if (seconds < 60) {
