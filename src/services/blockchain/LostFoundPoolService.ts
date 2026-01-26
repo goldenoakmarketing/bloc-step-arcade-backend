@@ -152,22 +152,35 @@ export class LostFoundPoolService {
     const claimState = await this.getClaimState(walletAddress)
 
     if (!claimState || !claimState.last_claim_time) {
+      logger.info({ walletAddress }, 'No previous claim found, allowing first claim')
       return { allowed: true }
     }
 
     const now = Date.now()
     const lastClaimTime = new Date(claimState.last_claim_time).getTime()
     const timeSinceLastClaim = now - lastClaimTime
+    const hoursRemaining = Math.max(0, (COOLDOWN_MS - timeSinceLastClaim) / (1000 * 60 * 60))
+
+    logger.info({
+      walletAddress,
+      lastClaimTime: claimState.last_claim_time,
+      timeSinceLastClaimMs: timeSinceLastClaim,
+      cooldownMs: COOLDOWN_MS,
+      hoursRemaining: hoursRemaining.toFixed(2),
+      canClaim: timeSinceLastClaim >= COOLDOWN_MS,
+    }, 'Checking claim cooldown')
 
     if (timeSinceLastClaim < COOLDOWN_MS) {
       const nextClaimTime = this.getNextResetTime(lastClaimTime)
+      logger.warn({ walletAddress, nextClaimTime, hoursRemaining: hoursRemaining.toFixed(2) }, 'Claim rejected - cooldown active')
       return {
         allowed: false,
         nextClaimTime,
-        reason: 'Cooldown active. Try again after 00:00 UTC.',
+        reason: `Cooldown active. ${hoursRemaining.toFixed(1)} hours remaining.`,
       }
     }
 
+    logger.info({ walletAddress }, 'Cooldown passed, allowing claim')
     return { allowed: true }
   }
 
@@ -285,15 +298,23 @@ export class LostFoundPoolService {
       .eq('id', (await this.getPoolRecord()).id)
 
     // Update or create claim state
-    await supabase
+    const claimTime = new Date().toISOString()
+    const { error: upsertError } = await supabase
       .from('pool_claims')
       .upsert({
         wallet_address: walletAddress.toLowerCase(),
         player_id: playerId || null,
-        last_claim_time: new Date().toISOString(),
+        last_claim_time: claimTime,
         streak: newStreak,
         total_claimed: (claimState?.total_claimed || 0) + claimed,
       }, { onConflict: 'wallet_address' })
+
+    if (upsertError) {
+      logger.error({ error: upsertError, walletAddress }, 'Failed to update claim state')
+      throw new Error('Failed to record claim')
+    }
+
+    logger.info({ walletAddress, claimTime, newStreak }, 'Claim state updated')
 
     // Record claim history
     await supabase.from('pool_claim_history').insert({
@@ -396,11 +417,18 @@ export class LostFoundPoolService {
    * Get claim state for a wallet
    */
   private async getClaimState(walletAddress: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('pool_claims')
       .select('*')
       .eq('wallet_address', walletAddress.toLowerCase())
       .single()
+
+    // PGRST116 means no rows found - that's OK for first-time claimers
+    if (error && error.code !== 'PGRST116') {
+      logger.error({ error, walletAddress }, 'Error fetching claim state')
+    }
+
+    logger.debug({ walletAddress, data, hasRecord: !!data }, 'Fetched claim state')
 
     return data
   }
