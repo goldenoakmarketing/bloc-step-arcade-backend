@@ -1,4 +1,4 @@
-import { getContract } from 'viem';
+import { getContract, parseAbiItem } from 'viem';
 import { publicClient } from '../../config/blockchain.js';
 import { stakingPoolAbi, contractAddresses } from '../../config/contracts.js';
 import { supabase } from '../../config/supabase.js';
@@ -28,16 +28,41 @@ export class StakingService {
     }
   }
 
+  async getStakersFromBlockchain(): Promise<string[]> {
+    logger.info('Fetching stakers from blockchain events');
+
+    try {
+      // Fetch Staked events from the StakingPool contract
+      const logs = await publicClient.getLogs({
+        address: contractAddresses.stakingPool,
+        event: parseAbiItem('event Staked(address indexed player, uint256 amount)'),
+        fromBlock: 'earliest',
+        toBlock: 'latest',
+      });
+
+      const uniqueAddresses = [...new Set(logs.map(log => (log.args as { player: string }).player.toLowerCase()))];
+      logger.info({ count: uniqueAddresses.length }, 'Found stakers from blockchain');
+      return uniqueAddresses;
+    } catch (error) {
+      logger.error({ error }, 'Failed to fetch staking events from blockchain');
+      return [];
+    }
+  }
+
   async syncAllStakingBalances(): Promise<{ synced: number; errors: number; created: number }> {
     logger.info('Starting staking balance sync for all players');
 
-    // First, get unique wallet addresses from staking_events and ensure they have player records
+    // First, get unique wallet addresses from blockchain staking events
+    const blockchainStakers = await this.getStakersFromBlockchain();
+
+    // Also check staking_events table as backup
     const { data: stakingEvents } = await supabase
       .from('staking_events')
       .select('wallet_address')
       .eq('event_type', 'stake');
 
-    const uniqueStakerAddresses = [...new Set((stakingEvents || []).map(e => e.wallet_address.toLowerCase()))];
+    const dbStakers = (stakingEvents || []).map(e => e.wallet_address.toLowerCase());
+    const uniqueStakerAddresses = [...new Set([...blockchainStakers, ...dbStakers])];
     let created = 0;
 
     // Ensure all stakers have player records
