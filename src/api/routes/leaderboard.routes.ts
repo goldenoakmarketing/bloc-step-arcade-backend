@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { leaderboardService } from '../../services/analytics/LeaderboardService.js';
+import { leaderboardImageService } from '../../services/images/LeaderboardImageService.js';
 import { extractWalletAddress } from '../middleware/auth.js';
 import { standardRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
@@ -7,6 +8,23 @@ import { paginationSchema, addressSchema } from '../../types/index.js';
 import type { Address, LeaderboardType } from '../../types/index.js';
 
 const router = Router();
+
+// Image endpoint - no auth needed, cached for sharing
+router.get(
+  '/image',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const imageBuffer = await leaderboardImageService.generateImage('yeet');
+
+    // Set cache headers for CDN/browser caching
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=300', // 5 minute cache
+    });
+
+    res.send(imageBuffer);
+  })
+);
 
 router.use(extractWalletAddress);
 
