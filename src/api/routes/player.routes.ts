@@ -4,7 +4,7 @@ import { arcadeVaultService } from '../../services/blockchain/ArcadeVaultService
 import { stakingService } from '../../services/blockchain/StakingService.js';
 import { extractWalletAddress, loadPlayer } from '../middleware/auth.js';
 import { standardRateLimit, strictRateLimit } from '../middleware/rateLimit.js';
-import { asyncHandler, NotFoundError, ValidationError } from '../middleware/errorHandler.js';
+import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
 import { linkFarcasterSchema, addressSchema } from '../../types/index.js';
 import type { Address } from '../../types/index.js';
 
