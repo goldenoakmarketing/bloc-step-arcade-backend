@@ -53,8 +53,22 @@ export class StakingService {
     }
   }
 
-  async syncAllStakingBalances(): Promise<{ synced: number; errors: number; created: number }> {
-    logger.info('Starting staking balance sync for all players');
+  async syncAllStakingBalances(resetFirst = false): Promise<{ synced: number; errors: number; created: number }> {
+    logger.info({ resetFirst }, 'Starting staking balance sync for all players');
+
+    // Optionally reset all staking balances to 0 first
+    if (resetFirst) {
+      const { error: resetError } = await supabase
+        .from('players')
+        .update({ cached_staked_balance: 0 })
+        .gt('cached_staked_balance', 0);
+
+      if (resetError) {
+        logger.error({ error: resetError }, 'Failed to reset staking balances');
+      } else {
+        logger.info('Reset all staking balances to 0');
+      }
+    }
 
     // First, get unique wallet addresses from blockchain staking events
     const blockchainStakers = await this.getStakersFromBlockchain();

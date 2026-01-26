@@ -51,8 +51,9 @@ router.get(
 router.post(
   '/sync-staking',
   standardRateLimit,
-  asyncHandler(async (_req, res) => {
-    const result = await stakingService.syncAllStakingBalances();
+  asyncHandler(async (req, res) => {
+    const resetFirst = req.query.reset === 'true';
+    const result = await stakingService.syncAllStakingBalances(resetFirst);
 
     res.json({
       success: true,
