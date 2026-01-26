@@ -2,36 +2,86 @@ import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D } from '@napi-
 import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { GameId } from '../../types/index.js';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { existsSync } from 'fs';
+import { writeFileSync, existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 const logger = createChildLogger('LeaderboardImageService');
 
-// Try to register a bundled font, fall back to system fonts
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Font configuration
+const FONT_NAME = 'CustomMono';
+let fontRegistered = false;
+
+// Download and register a font from URL
+const registerFontFromUrl = async (url: string, fontName: string): Promise<boolean> => {
+  try {
+    logger.info({ url, fontName }, 'Downloading font...');
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      logger.error({ status: response.status }, 'Failed to download font');
+      return false;
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+
+    // Save to temp file (GlobalFonts.register needs a path or buffer)
+    const tempDir = join(tmpdir(), 'bloc-fonts');
+    if (!existsSync(tempDir)) {
+      mkdirSync(tempDir, { recursive: true });
+    }
+
+    const fontPath = join(tempDir, `${fontName}.ttf`);
+    writeFileSync(fontPath, buffer);
+
+    // Register the font
+    GlobalFonts.registerFromPath(fontPath, fontName);
+    logger.info({ fontName, fontPath }, 'Font registered successfully');
+
+    return true;
+  } catch (error) {
+    logger.error({ error }, 'Failed to register font from URL');
+    return false;
+  }
+};
 
 // Check available fonts and register if needed
-const initFonts = () => {
+const initFonts = async (): Promise<boolean> => {
   try {
     // Log available font families for debugging
     const families = GlobalFonts.families;
     logger.info({ fontCount: families.length }, 'Available font families');
 
-    // Try to find a monospace font
-    const hasMonospace = families.some(f =>
-      f.family.toLowerCase().includes('mono') ||
-      f.family.toLowerCase().includes('courier') ||
-      f.family.toLowerCase().includes('consolas')
-    );
-
-    if (!hasMonospace) {
-      logger.warn('No monospace font found, text may not render correctly');
+    if (families.length > 0) {
+      logger.info({ fonts: families.slice(0, 10).map(f => f.family) }, 'Sample fonts available');
     }
 
-    // Log first few font families for debugging
-    logger.info({ fonts: families.slice(0, 10).map(f => f.family) }, 'Sample fonts available');
+    // Check if we have any usable fonts
+    const hasUsableFont = families.some(f =>
+      f.family.toLowerCase().includes('mono') ||
+      f.family.toLowerCase().includes('courier') ||
+      f.family.toLowerCase().includes('sans') ||
+      f.family.toLowerCase().includes('arial') ||
+      f.family.toLowerCase().includes('dejavu')
+    );
+
+    if (!hasUsableFont || families.length === 0) {
+      logger.warn('No usable fonts found, downloading fallback font...');
+
+      // Download Roboto Mono from Google Fonts (static TTF)
+      // Using a direct GitHub raw URL for a monospace font
+      const fontUrl = 'https://github.com/googlefonts/RobotoMono/raw/main/fonts/ttf/RobotoMono-Bold.ttf';
+
+      fontRegistered = await registerFontFromUrl(fontUrl, FONT_NAME);
+
+      if (fontRegistered) {
+        logger.info('Fallback font registered successfully');
+      } else {
+        logger.error('Failed to register fallback font - text may not render');
+      }
+    } else {
+      logger.info('System fonts available, using those');
+    }
 
     return true;
   } catch (error) {
@@ -40,12 +90,23 @@ const initFonts = () => {
   }
 };
 
-// Initialize fonts on module load
-const fontsInitialized = initFonts();
+// Initialize fonts (called lazily on first image generation)
+let fontsInitialized = false;
+const ensureFontsInitialized = async () => {
+  if (!fontsInitialized) {
+    await initFonts();
+    fontsInitialized = true;
+  }
+};
 
-// Use fonts that are commonly available on Linux servers
-// Fall back through multiple options
-const FONT_FAMILY = 'DejaVu Sans Mono, Liberation Mono, Courier New, Courier, monospace';
+// Use registered font if available, otherwise fall back to system fonts
+const getFontFamily = () => {
+  if (fontRegistered) {
+    return FONT_NAME;
+  }
+  // Fall back through multiple options
+  return 'DejaVu Sans Mono, Liberation Mono, Noto Sans Mono, Courier New, Courier, sans-serif';
+};
 
 // Image dimensions (OG image standard)
 const WIDTH = 1200;
@@ -93,6 +154,10 @@ export class LeaderboardImageService {
    * Generate a game-specific leaderboard share image
    */
   async generateImage(gameId: GameId): Promise<Buffer> {
+    // Ensure fonts are loaded before drawing
+    await ensureFontsInitialized();
+    logger.info({ fontFamily: getFontFamily() }, 'Using font family for image generation');
+
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
 
@@ -118,19 +183,19 @@ export class LeaderboardImageService {
 
     // Draw title with game name
     ctx.fillStyle = COLORS.neonPurple;
-    ctx.font = `bold 48px ${FONT_FAMILY}`;
+    ctx.font = `bold 48px ${getFontFamily()}`;
     ctx.textAlign = 'center';
     ctx.fillText('BLOC STEP ARCADE', WIDTH / 2, 80);
     logger.debug('Drew title text');
 
     // Draw game name (without emoji - emojis may not render on server)
     ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = `bold 36px ${FONT_FAMILY}`;
+    ctx.font = `bold 36px ${getFontFamily()}`;
     ctx.fillText(`[ ${gameInfo.name} ]`, WIDTH / 2, 130);
 
     // Draw subtitle
     ctx.fillStyle = COLORS.neonBlue;
-    ctx.font = `bold 24px ${FONT_FAMILY}`;
+    ctx.font = `bold 24px ${getFontFamily()}`;
     ctx.fillText('TOP PLAYERS', WIDTH / 2, 170);
 
     // Load and draw #1 player's PFP if available
@@ -167,7 +232,7 @@ export class LeaderboardImageService {
 
             // Draw crown above PFP
             ctx.fillStyle = COLORS.neonYellow;
-            ctx.font = `bold 28px ${FONT_FAMILY}`;
+            ctx.font = `bold 28px ${getFontFamily()}`;
             ctx.textAlign = 'center';
             ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
           } else {
@@ -202,19 +267,19 @@ export class LeaderboardImageService {
 
       // Draw rank
       ctx.fillStyle = rankColor;
-      ctx.font = `bold 32px ${FONT_FAMILY}`;
+      ctx.font = `bold 32px ${getFontFamily()}`;
       ctx.textAlign = 'left';
       ctx.fillText(`#${i + 1}`, listX, y);
 
       // Draw username
       const username = entry.farcasterUsername || this.truncateAddress(entry.walletAddress);
       ctx.fillStyle = i === 0 ? COLORS.neonYellow : COLORS.textWhite;
-      ctx.font = `bold 26px ${FONT_FAMILY}`;
+      ctx.font = `bold 26px ${getFontFamily()}`;
       ctx.fillText(`@${username}`, listX + 70, y);
 
       // Draw score
       ctx.fillStyle = rankColor;
-      ctx.font = `bold 26px ${FONT_FAMILY}`;
+      ctx.font = `bold 26px ${getFontFamily()}`;
       ctx.textAlign = 'right';
       const scoreFormatted = this.formatScore(entry.score);
       ctx.fillText(scoreFormatted, listX + 680, y);
@@ -228,14 +293,14 @@ export class LeaderboardImageService {
       ctx.fillRect(listX - 10, y - 28, 700, 50);
 
       ctx.fillStyle = COLORS.textMuted;
-      ctx.font = `22px ${FONT_FAMILY}`;
+      ctx.font = `22px ${getFontFamily()}`;
       ctx.textAlign = 'left';
       ctx.fillText(`#${i + 1}  --- empty ---`, listX, y);
     }
 
     // Draw footer
     ctx.fillStyle = COLORS.textMuted;
-    ctx.font = `18px ${FONT_FAMILY}`;
+    ctx.font = `18px ${getFontFamily()}`;
     ctx.textAlign = 'center';
     ctx.fillText('blocsteparcade.netlify.app', WIDTH / 2, HEIGHT - 45);
 
@@ -323,13 +388,13 @@ export class LeaderboardImageService {
 
     // Draw "?" or crown
     ctx.fillStyle = COLORS.textWhite;
-    ctx.font = `bold 64px ${FONT_FAMILY}`;
+    ctx.font = `bold 64px ${getFontFamily()}`;
     ctx.textAlign = 'center';
     ctx.fillText('?', x + size / 2, y + size / 2 + 20);
 
     // Draw crown above
     ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = `bold 28px ${FONT_FAMILY}`;
+    ctx.font = `bold 28px ${getFontFamily()}`;
     ctx.fillText('* #1 *', x + size / 2, y - 10);
   }
 
