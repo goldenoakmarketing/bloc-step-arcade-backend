@@ -236,17 +236,17 @@ export class LeaderboardImageService {
             ctx.textAlign = 'center';
             ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
           } else {
-            this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
+            await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
           }
         } catch (error) {
           logger.warn({ error, fid }, 'Failed to load PFP');
-          this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
+          await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
         }
       } else {
-        this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
+        await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
       }
     } else {
-      this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
+      await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
     }
 
     // Draw leaderboard entries
@@ -373,29 +373,59 @@ export class LeaderboardImageService {
     }
   }
 
-  private drawPlaceholderPfp(ctx: SKRSContext2D, x: number, y: number, size: number) {
-    // Draw border
-    ctx.strokeStyle = COLORS.neonYellow;
-    ctx.lineWidth = 4;
-    ctx.strokeRect(x - 4, y - 4, size + 8, size + 8);
+  private async drawPlaceholderPfp(ctx: SKRSContext2D, x: number, y: number, size: number) {
+    // Default arcade cabinet image URL
+    const defaultPfpUrl = 'https://blocsteparcade.netlify.app/arcade-cabinet.jpg';
 
-    // Draw placeholder background
-    const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-    gradient.addColorStop(0, COLORS.neonPurple);
-    gradient.addColorStop(1, COLORS.neonBlue);
-    ctx.fillStyle = gradient;
-    ctx.fillRect(x, y, size, size);
+    try {
+      // Try to load the arcade cabinet image
+      const img = await loadImage(defaultPfpUrl);
 
-    // Draw "?" or crown
-    ctx.fillStyle = COLORS.textWhite;
-    ctx.font = `bold 64px ${getFontFamily()}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('?', x + size / 2, y + size / 2 + 20);
+      ctx.save();
 
-    // Draw crown above
-    ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = `bold 28px ${getFontFamily()}`;
-    ctx.fillText('* #1 *', x + size / 2, y - 10);
+      // Draw border
+      ctx.strokeStyle = COLORS.neonYellow;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x - 4, y - 4, size + 8, size + 8);
+
+      // Clip to square
+      ctx.beginPath();
+      ctx.rect(x, y, size, size);
+      ctx.clip();
+
+      // Draw image (centered and covering)
+      ctx.drawImage(img, x, y, size, size);
+
+      ctx.restore();
+
+      // Draw crown above
+      ctx.fillStyle = COLORS.neonYellow;
+      ctx.font = `bold 28px ${getFontFamily()}`;
+      ctx.textAlign = 'center';
+      ctx.fillText('* #1 *', x + size / 2, y - 10);
+    } catch (error) {
+      logger.warn({ error }, 'Failed to load default PFP image, using fallback');
+
+      // Fallback to gradient background with "?"
+      ctx.strokeStyle = COLORS.neonYellow;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(x - 4, y - 4, size + 8, size + 8);
+
+      const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+      gradient.addColorStop(0, COLORS.neonPurple);
+      gradient.addColorStop(1, COLORS.neonBlue);
+      ctx.fillStyle = gradient;
+      ctx.fillRect(x, y, size, size);
+
+      ctx.fillStyle = COLORS.textWhite;
+      ctx.font = `bold 64px ${getFontFamily()}`;
+      ctx.textAlign = 'center';
+      ctx.fillText('?', x + size / 2, y + size / 2 + 20);
+
+      ctx.fillStyle = COLORS.neonYellow;
+      ctx.font = `bold 28px ${getFontFamily()}`;
+      ctx.fillText('* #1 *', x + size / 2, y - 10);
+    }
   }
 
   private async getFarcasterPfp(fid: number): Promise<string | null> {
