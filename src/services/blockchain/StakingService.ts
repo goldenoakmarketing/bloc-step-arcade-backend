@@ -1,6 +1,6 @@
-import { getContract, parseAbiItem } from 'viem';
+import { parseAbiItem } from 'viem';
 import { publicClient } from '../../config/blockchain.js';
-import { stakingPoolAbi, contractAddresses } from '../../config/contracts.js';
+import { contractAddresses } from '../../config/contracts.js';
 import { supabase } from '../../config/supabase.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { Address } from '../../types/index.js';
@@ -8,16 +8,6 @@ import type { Address } from '../../types/index.js';
 const logger = createChildLogger('StakingService');
 
 export class StakingService {
-  private contract;
-
-  constructor() {
-    this.contract = getContract({
-      address: contractAddresses.stakingPool,
-      abi: stakingPoolAbi,
-      client: publicClient,
-    });
-  }
-
   async getStakedBalance(player: Address): Promise<bigint> {
     try {
       // Use raw call with function selector 0x3a02a42d (stakedBalances mapping)
