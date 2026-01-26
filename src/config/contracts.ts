@@ -131,6 +131,13 @@ export const stakingPoolAbi = [
     type: 'function',
   },
   {
+    inputs: [{ name: '', type: 'address' }],
+    name: 'stakedBalances',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
     anonymous: false,
     inputs: [
       { indexed: true, name: 'player', type: 'address' },
