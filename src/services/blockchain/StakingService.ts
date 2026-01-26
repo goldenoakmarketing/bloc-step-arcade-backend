@@ -20,15 +20,19 @@ export class StakingService {
 
   async getStakedBalance(player: Address): Promise<bigint> {
     try {
-      // Try using raw call with function selector 0x3a02a42d
-      const data = await publicClient.call({
+      // Use raw call with function selector 0x3a02a42d (stakedBalances mapping)
+      // Address must be padded to 32 bytes (64 hex chars)
+      const paddedAddress = player.slice(2).toLowerCase().padStart(64, '0');
+      const callData = `0x3a02a42d${paddedAddress}` as `0x${string}`;
+
+      const result = await publicClient.call({
         to: contractAddresses.stakingPool,
-        data: `0x3a02a42d000000000000000000000000${player.slice(2).toLowerCase()}` as `0x${string}`,
+        data: callData,
       });
 
-      if (data.data) {
-        const balance = BigInt(data.data);
-        logger.info({ player, balance: balance.toString() }, 'Fetched staked balance via raw call');
+      if (result.data) {
+        const balance = BigInt(result.data);
+        logger.info({ player, balance: balance.toString() }, 'Fetched staked balance');
         return balance;
       }
       return BigInt(0);
