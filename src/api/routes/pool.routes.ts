@@ -94,4 +94,38 @@ router.post(
   })
 );
 
+// Deposit to pool (voluntary donation)
+router.post(
+  '/deposit',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { walletAddress, quarters, txHash } = req.body;
+
+    if (!walletAddress || !addressSchema.safeParse(walletAddress).success) {
+      throw new ValidationError('Invalid wallet address');
+    }
+
+    if (!quarters || typeof quarters !== 'number' || quarters < 1) {
+      throw new ValidationError('Invalid quarters amount');
+    }
+
+    if (!txHash || typeof txHash !== 'string') {
+      throw new ValidationError('Invalid transaction hash');
+    }
+
+    const result = await lostFoundPoolService.processVoluntaryDonation(quarters);
+
+    res.json({
+      success: true,
+      data: {
+        addedToPool: result.addedToPool,
+        overflowToStaking: result.overflowToStaking,
+        overflowToOperations: result.overflowToOperations,
+        walletAddress: walletAddress.toLowerCase(),
+        txHash,
+      },
+    });
+  })
+);
+
 export default router;
