@@ -1,9 +1,51 @@
-import { createCanvas, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
+import { createCanvas, loadImage, GlobalFonts, type SKRSContext2D } from '@napi-rs/canvas';
 import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { GameId } from '../../types/index.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 const logger = createChildLogger('LeaderboardImageService');
+
+// Try to register a bundled font, fall back to system fonts
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+// Check available fonts and register if needed
+const initFonts = () => {
+  try {
+    // Log available font families for debugging
+    const families = GlobalFonts.families;
+    logger.info({ fontCount: families.length }, 'Available font families');
+
+    // Try to find a monospace font
+    const hasMonospace = families.some(f =>
+      f.family.toLowerCase().includes('mono') ||
+      f.family.toLowerCase().includes('courier') ||
+      f.family.toLowerCase().includes('consolas')
+    );
+
+    if (!hasMonospace) {
+      logger.warn('No monospace font found, text may not render correctly');
+    }
+
+    // Log first few font families for debugging
+    logger.info({ fonts: families.slice(0, 10).map(f => f.family) }, 'Sample fonts available');
+
+    return true;
+  } catch (error) {
+    logger.error({ error }, 'Failed to initialize fonts');
+    return false;
+  }
+};
+
+// Initialize fonts on module load
+const fontsInitialized = initFonts();
+
+// Use fonts that are commonly available on Linux servers
+// Fall back through multiple options
+const FONT_FAMILY = 'DejaVu Sans Mono, Liberation Mono, Courier New, Courier, monospace';
 
 // Image dimensions (OG image standard)
 const WIDTH = 1200;
@@ -76,19 +118,20 @@ export class LeaderboardImageService {
 
     // Draw title with game name
     ctx.fillStyle = COLORS.neonPurple;
-    ctx.font = 'bold 48px monospace';
+    ctx.font = `bold 48px ${FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.fillText('BLOC STEP ARCADE', WIDTH / 2, 80);
+    logger.debug('Drew title text');
 
-    // Draw game name with emoji
+    // Draw game name (without emoji - emojis may not render on server)
     ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = 'bold 36px monospace';
-    ctx.fillText(`${gameInfo.emoji} ${gameInfo.name} ${gameInfo.emoji}`, WIDTH / 2, 130);
+    ctx.font = `bold 36px ${FONT_FAMILY}`;
+    ctx.fillText(`[ ${gameInfo.name} ]`, WIDTH / 2, 130);
 
     // Draw subtitle
     ctx.fillStyle = COLORS.neonBlue;
-    ctx.font = 'bold 24px monospace';
-    ctx.fillText('[ TOP PLAYERS ]', WIDTH / 2, 170);
+    ctx.font = `bold 24px ${FONT_FAMILY}`;
+    ctx.fillText('TOP PLAYERS', WIDTH / 2, 170);
 
     // Load and draw #1 player's PFP if available
     const pfpX = 150;
@@ -124,7 +167,7 @@ export class LeaderboardImageService {
 
             // Draw crown above PFP
             ctx.fillStyle = COLORS.neonYellow;
-            ctx.font = 'bold 28px monospace';
+            ctx.font = `bold 28px ${FONT_FAMILY}`;
             ctx.textAlign = 'center';
             ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
           } else {
@@ -159,19 +202,19 @@ export class LeaderboardImageService {
 
       // Draw rank
       ctx.fillStyle = rankColor;
-      ctx.font = 'bold 32px monospace';
+      ctx.font = `bold 32px ${FONT_FAMILY}`;
       ctx.textAlign = 'left';
       ctx.fillText(`#${i + 1}`, listX, y);
 
       // Draw username
       const username = entry.farcasterUsername || this.truncateAddress(entry.walletAddress);
       ctx.fillStyle = i === 0 ? COLORS.neonYellow : COLORS.textWhite;
-      ctx.font = 'bold 26px monospace';
+      ctx.font = `bold 26px ${FONT_FAMILY}`;
       ctx.fillText(`@${username}`, listX + 70, y);
 
       // Draw score
       ctx.fillStyle = rankColor;
-      ctx.font = 'bold 26px monospace';
+      ctx.font = `bold 26px ${FONT_FAMILY}`;
       ctx.textAlign = 'right';
       const scoreFormatted = this.formatScore(entry.score);
       ctx.fillText(scoreFormatted, listX + 680, y);
@@ -185,14 +228,14 @@ export class LeaderboardImageService {
       ctx.fillRect(listX - 10, y - 28, 700, 50);
 
       ctx.fillStyle = COLORS.textMuted;
-      ctx.font = '22px monospace';
+      ctx.font = `22px ${FONT_FAMILY}`;
       ctx.textAlign = 'left';
       ctx.fillText(`#${i + 1}  --- empty ---`, listX, y);
     }
 
     // Draw footer
     ctx.fillStyle = COLORS.textMuted;
-    ctx.font = '18px monospace';
+    ctx.font = `18px ${FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.fillText('blocsteparcade.netlify.app', WIDTH / 2, HEIGHT - 45);
 
@@ -280,13 +323,13 @@ export class LeaderboardImageService {
 
     // Draw "?" or crown
     ctx.fillStyle = COLORS.textWhite;
-    ctx.font = 'bold 64px monospace';
+    ctx.font = `bold 64px ${FONT_FAMILY}`;
     ctx.textAlign = 'center';
     ctx.fillText('?', x + size / 2, y + size / 2 + 20);
 
     // Draw crown above
     ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = 'bold 28px monospace';
+    ctx.font = `bold 28px ${FONT_FAMILY}`;
     ctx.fillText('* #1 *', x + size / 2, y - 10);
   }
 
