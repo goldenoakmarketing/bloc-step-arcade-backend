@@ -123,36 +123,54 @@ export class PlayerRepository {
   }
 
   async getTopByYeet(limit = 100): Promise<Player[]> {
+    // Fetch all players with donations, then sort in JS to avoid string sorting issues
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_yeeted', 0)
-      .order('total_yeeted', { ascending: false })
-      .limit(limit);
+      .gt('total_yeeted', 0);
 
-    return (data || []).map(this.mapToPlayer);
+    if (!data || data.length === 0) return [];
+
+    // Sort by total_yeeted descending (as numbers)
+    const sorted = data
+      .sort((a, b) => Number(b.total_yeeted) - Number(a.total_yeeted))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async getTopByStaking(limit = 100): Promise<Player[]> {
+    // Fetch all players with staking balance, then sort in JS to avoid string sorting issues
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('cached_staked_balance', 0)
-      .order('cached_staked_balance', { ascending: false })
-      .limit(limit);
+      .gt('cached_staked_balance', 0);
 
-    return (data || []).map(this.mapToPlayer);
+    if (!data || data.length === 0) return [];
+
+    // Sort by cached_staked_balance descending (as numbers)
+    const sorted = data
+      .sort((a, b) => Number(b.cached_staked_balance) - Number(a.cached_staked_balance))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async getTopByTimePlayed(limit = 100): Promise<Player[]> {
+    // Fetch all players with time played, then sort in JS to avoid string sorting issues
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_time_consumed', 0)
-      .order('total_time_consumed', { ascending: false })
-      .limit(limit);
+      .gt('total_time_consumed', 0);
 
-    return (data || []).map(this.mapToPlayer);
+    if (!data || data.length === 0) return [];
+
+    // Sort by total_time_consumed descending (as numbers)
+    const sorted = data
+      .sort((a, b) => Number(b.total_time_consumed) - Number(a.total_time_consumed))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async count(): Promise<number> {
