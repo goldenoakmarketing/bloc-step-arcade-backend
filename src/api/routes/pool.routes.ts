@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { lostFoundPoolService } from '../../services/blockchain/LostFoundPoolService.js';
+import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { extractWalletAddress, requireWallet } from '../middleware/auth.js';
 import { strictRateLimit, standardRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
@@ -114,6 +115,9 @@ router.post(
     }
 
     const result = await lostFoundPoolService.processVoluntaryDonation(quarters);
+
+    // Track donation in player stats
+    await playerRepository.incrementYeeted(walletAddress.toLowerCase(), quarters);
 
     res.json({
       success: true,

@@ -109,6 +109,17 @@ export class PlayerRepository {
       .eq('wallet_address', walletAddress.toLowerCase());
   }
 
+  async incrementYeeted(walletAddress: Address, quarters: number): Promise<void> {
+    const player = await this.findOrCreate(walletAddress);
+    const { error } = await supabase
+      .from('players')
+      .update({ total_yeeted: Number(player.totalYeeted) + quarters })
+      .eq('id', player.id);
+    if (error) {
+      logger.error({ error, walletAddress, quarters }, 'Error incrementing yeeted');
+    }
+  }
+
   async getTopByYeet(limit = 100): Promise<Player[]> {
     const { data } = await supabase
       .from('players')
