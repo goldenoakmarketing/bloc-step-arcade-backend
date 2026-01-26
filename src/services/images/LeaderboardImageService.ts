@@ -311,7 +311,7 @@ export class LeaderboardImageService {
         return null;
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as { users?: Array<{ pfp_url?: string }> };
       return data.users?.[0]?.pfp_url || null;
     } catch (error) {
       logger.warn({ error, fid }, 'Failed to fetch Farcaster PFP');

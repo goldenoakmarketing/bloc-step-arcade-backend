@@ -6,7 +6,7 @@ import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { extractWalletAddress, requireWallet, loadPlayer } from '../middleware/auth.js';
 import { standardRateLimit, txRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
-import { paginationSchema, addressSchema, gameIdSchema, submitScoreSchema, VALID_GAME_IDS } from '../../types/index.js';
+import { paginationSchema, addressSchema, submitScoreSchema, VALID_GAME_IDS } from '../../types/index.js';
 import type { Address, LeaderboardType, GameId } from '../../types/index.js';
 
 const router = Router();
