@@ -42,6 +42,7 @@ export interface Player {
   totalYeeted: bigint;
   totalTipsSent: bigint;
   totalTipsReceived: bigint;
+  stakeStartedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

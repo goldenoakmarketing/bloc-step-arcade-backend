@@ -278,6 +278,13 @@ export class PlayerRepository {
     return index >= 0 ? index + 1 : null;
   }
 
+  async setStakeStartedAt(walletAddress: Address, startedAt: Date | null): Promise<void> {
+    await supabase
+      .from('players')
+      .update({ stake_started_at: startedAt?.toISOString() || null })
+      .eq('wallet_address', walletAddress.toLowerCase());
+  }
+
   private mapToPlayer(data: {
     id: string;
     wallet_address: string;
@@ -290,6 +297,7 @@ export class PlayerRepository {
     total_yeeted: number;
     total_tips_sent: number;
     total_tips_received: number;
+    stake_started_at: string | null;
     created_at: string;
     updated_at: string;
   }): Player {
@@ -305,6 +313,7 @@ export class PlayerRepository {
       totalYeeted: BigInt(data.total_yeeted || 0),
       totalTipsSent: BigInt(data.total_tips_sent || 0),
       totalTipsReceived: BigInt(data.total_tips_received || 0),
+      stakeStartedAt: data.stake_started_at ? new Date(data.stake_started_at) : undefined,
       createdAt: new Date(data.created_at),
       updatedAt: new Date(data.updated_at),
     };

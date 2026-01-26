@@ -3,6 +3,7 @@ import { publicClient } from '../../config/blockchain.js';
 import { contractAddresses } from '../../config/contracts.js';
 import { supabase } from '../../config/supabase.js';
 import { createChildLogger } from '../../utils/logger.js';
+import { playerRepository } from '../../repositories/PlayerRepository.js';
 import type { Address } from '../../types/index.js';
 
 const logger = createChildLogger('StakingService');
@@ -106,7 +107,7 @@ export class StakingService {
     // Get all players
     const { data: players, error } = await supabase
       .from('players')
-      .select('id, wallet_address');
+      .select('id, wallet_address, stake_started_at');
 
     if (error || !players) {
       logger.error({ error }, 'Failed to fetch players for staking sync');
@@ -128,6 +129,20 @@ export class StakingService {
           .from('players')
           .update({ cached_staked_balance: Number(balanceTokens) })
           .eq('id', player.id);
+
+        // Track stake_started_at for eligibility
+        const hasBalance = balanceWei > 0n;
+        const hadStakeStarted = player.stake_started_at !== null;
+
+        if (hasBalance && !hadStakeStarted) {
+          // User has staked but no start date - set it now
+          await playerRepository.setStakeStartedAt(player.wallet_address as Address, new Date());
+          logger.info({ wallet: player.wallet_address }, 'Set stake_started_at for new staker');
+        } else if (!hasBalance && hadStakeStarted) {
+          // User unstaked everything - clear the start date
+          await playerRepository.setStakeStartedAt(player.wallet_address as Address, null);
+          logger.info({ wallet: player.wallet_address }, 'Cleared stake_started_at for unstaker');
+        }
 
         if (balanceWei > 0) {
           logger.info({ wallet: player.wallet_address, balanceWei: balanceWei.toString(), balanceTokens: balanceTokens.toString() }, 'Updated staking balance');

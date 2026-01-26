@@ -46,6 +46,7 @@ router.get(
         farcasterUsername: player.farcasterUsername,
         timeBalance: timeBalance.toString(),
         cachedStakedBalance: stakedBalance.toString(),
+        stakeStartedAt: player.stakeStartedAt?.toISOString() || null,
         stats: {
           totalTimePurchased: player.totalTimePurchased.toString(),
           totalTimeConsumed: player.totalTimeConsumed.toString(),
