@@ -56,23 +56,4 @@ router.post(
   })
 );
 
-// Debug: Get staked balance for a wallet
-router.get(
-  '/debug/staked/:wallet',
-  standardRateLimit,
-  asyncHandler(async (req, res) => {
-    const wallet = req.params.wallet;
-    const balance = await stakingService.getStakedBalance(wallet as `0x${string}`);
-
-    res.json({
-      success: true,
-      data: {
-        wallet,
-        stakedBalance: balance.toString(),
-        stakedBalanceFormatted: (Number(balance) / 1e18).toFixed(2),
-      },
-    });
-  })
-);
-
 export default router;
