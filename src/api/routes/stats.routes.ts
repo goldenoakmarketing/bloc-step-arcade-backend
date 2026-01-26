@@ -100,17 +100,27 @@ router.post(
 
 // Debug: Get all players' cached staking balances
 router.get(
-  '/debug/staking-balances',
+  '/debug-staking',
   standardRateLimit,
   asyncHandler(async (_req, res) => {
     const { data } = await supabase
       .from('players')
-      .select('wallet_address, cached_staked_balance')
-      .order('cached_staked_balance', { ascending: false });
+      .select('wallet_address, cached_staked_balance');
+
+    const formatted = (data || []).map(d => ({
+      wallet: d.wallet_address,
+      balance: d.cached_staked_balance,
+      balanceType: typeof d.cached_staked_balance,
+      balanceAsNumber: Number(d.cached_staked_balance),
+    }));
+
+    // Sort in JS
+    formatted.sort((a, b) => b.balanceAsNumber - a.balanceAsNumber);
 
     res.json({
       success: true,
-      data: data || [],
+      count: formatted.length,
+      data: formatted,
     });
   })
 );
