@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { supabase } from '../../config/supabase.js';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { stakingService } from '../../services/blockchain/StakingService.js';
 import { leaderboardService } from '../../services/analytics/LeaderboardService.js';
@@ -93,6 +94,23 @@ router.post(
         stakingSync: stakingResult,
         message: 'Full sync completed',
       },
+    });
+  })
+);
+
+// Debug: Get all players' cached staking balances
+router.get(
+  '/debug/staking-balances',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    const { data } = await supabase
+      .from('players')
+      .select('wallet_address, cached_staked_balance')
+      .order('cached_staked_balance', { ascending: false });
+
+    res.json({
+      success: true,
+      data: data || [],
     });
   })
 );
