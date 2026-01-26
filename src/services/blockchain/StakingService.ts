@@ -28,8 +28,37 @@ export class StakingService {
     }
   }
 
-  async syncAllStakingBalances(): Promise<{ synced: number; errors: number }> {
+  async syncAllStakingBalances(): Promise<{ synced: number; errors: number; created: number }> {
     logger.info('Starting staking balance sync for all players');
+
+    // First, get unique wallet addresses from staking_events and ensure they have player records
+    const { data: stakingEvents } = await supabase
+      .from('staking_events')
+      .select('wallet_address')
+      .eq('event_type', 'stake');
+
+    const uniqueStakerAddresses = [...new Set((stakingEvents || []).map(e => e.wallet_address.toLowerCase()))];
+    let created = 0;
+
+    // Ensure all stakers have player records
+    for (const walletAddress of uniqueStakerAddresses) {
+      const { data: existing } = await supabase
+        .from('players')
+        .select('id')
+        .eq('wallet_address', walletAddress)
+        .single();
+
+      if (!existing) {
+        const { error: createError } = await supabase
+          .from('players')
+          .insert({ wallet_address: walletAddress });
+
+        if (!createError) {
+          logger.info({ walletAddress }, 'Created player record for staker');
+          created++;
+        }
+      }
+    }
 
     // Get all players
     const { data: players, error } = await supabase
@@ -38,7 +67,7 @@ export class StakingService {
 
     if (error || !players) {
       logger.error({ error }, 'Failed to fetch players for staking sync');
-      return { synced: 0, errors: 1 };
+      return { synced: 0, errors: 1, created };
     }
 
     let synced = 0;
@@ -54,7 +83,7 @@ export class StakingService {
           .eq('id', player.id);
 
         if (balance > 0) {
-          logger.debug({ wallet: player.wallet_address, balance: balance.toString() }, 'Updated staking balance');
+          logger.info({ wallet: player.wallet_address, balance: balance.toString() }, 'Updated staking balance');
         }
         synced++;
       } catch (err) {
@@ -63,8 +92,8 @@ export class StakingService {
       }
     }
 
-    logger.info({ synced, errors }, 'Staking balance sync completed');
-    return { synced, errors };
+    logger.info({ synced, errors, created }, 'Staking balance sync completed');
+    return { synced, errors, created };
   }
 }
 
