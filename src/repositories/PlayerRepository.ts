@@ -148,10 +148,26 @@ export class PlayerRepository {
 
     if (!data || data.length === 0) return [];
 
+    // Debug: log raw data from Supabase
+    logger.info({
+      rawData: data.map(d => ({
+        wallet: d.wallet_address?.slice(-8),
+        balance: d.cached_staked_balance,
+        balanceType: typeof d.cached_staked_balance
+      }))
+    }, 'Raw staking data from Supabase');
+
     // Sort by cached_staked_balance descending (as numbers)
     const sorted = data
       .sort((a, b) => Number(b.cached_staked_balance) - Number(a.cached_staked_balance))
       .slice(0, limit);
+
+    logger.info({
+      sortedData: sorted.map(d => ({
+        wallet: d.wallet_address?.slice(-8),
+        balance: d.cached_staked_balance
+      }))
+    }, 'Sorted staking data');
 
     return sorted.map(this.mapToPlayer);
   }
