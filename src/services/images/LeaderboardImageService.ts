@@ -1,4 +1,4 @@
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { createCanvas, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
 import { createChildLogger } from '../../utils/logger.js';
 import type { GameId } from '../../types/index.js';
@@ -95,8 +95,8 @@ export class LeaderboardImageService {
     const pfpY = 210;
     const pfpSize = 160;
 
-    if (entries.length > 0) {
-      const topPlayer = entries[0];
+    const topPlayer = entries[0];
+    if (topPlayer) {
       const fid = topPlayer.farcasterFid;
 
       if (fid) {
@@ -148,6 +148,8 @@ export class LeaderboardImageService {
 
     for (let i = 0; i < Math.min(5, entries.length); i++) {
       const entry = entries[i];
+      if (!entry) continue;
+
       const y = startY + i * rowHeight;
       const rankColor = RANK_COLORS[i] || COLORS.textMuted;
 
@@ -201,7 +203,7 @@ export class LeaderboardImageService {
   }
 
   private drawPixelBorder(
-    ctx: ReturnType<typeof createCanvas>['prototype']['getContext'],
+    ctx: SKRSContext2D,
     x: number,
     y: number,
     width: number,
@@ -239,36 +241,31 @@ export class LeaderboardImageService {
     ctx.fillRect(x + width, y + height - pixelSize, pixelSize, pixelSize);
   }
 
-  private drawCornerPixels(ctx: ReturnType<typeof createCanvas>['prototype']['getContext']) {
+  private drawCornerPixels(ctx: SKRSContext2D) {
     const pixelSize = 6;
     const colors = [COLORS.neonPink, COLORS.neonBlue, COLORS.neonGreen, COLORS.neonYellow];
 
     // Top-left decoration
     for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = colors[i];
+      ctx.fillStyle = colors[i] ?? COLORS.neonPink;
       ctx.fillRect(40 + i * (pixelSize + 2), 40, pixelSize, pixelSize);
     }
 
     // Top-right decoration
     for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = colors[3 - i];
+      ctx.fillStyle = colors[3 - i] ?? COLORS.neonPink;
       ctx.fillRect(WIDTH - 80 + i * (pixelSize + 2), 40, pixelSize, pixelSize);
     }
 
     // Bottom decorations
     for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = colors[i];
+      ctx.fillStyle = colors[i] ?? COLORS.neonPink;
       ctx.fillRect(40 + i * (pixelSize + 2), HEIGHT - 46, pixelSize, pixelSize);
       ctx.fillRect(WIDTH - 80 + i * (pixelSize + 2), HEIGHT - 46, pixelSize, pixelSize);
     }
   }
 
-  private drawPlaceholderPfp(
-    ctx: ReturnType<typeof createCanvas>['prototype']['getContext'],
-    x: number,
-    y: number,
-    size: number
-  ) {
+  private drawPlaceholderPfp(ctx: SKRSContext2D, x: number, y: number, size: number) {
     // Draw border
     ctx.strokeStyle = COLORS.neonYellow;
     ctx.lineWidth = 4;
