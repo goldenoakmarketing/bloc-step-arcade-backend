@@ -52,16 +52,41 @@ export class LeaderboardService {
   private async getOrComputeLeaderboard(
     type: LeaderboardType,
     limit: number,
-    _computeFn: () => Promise<Array<{ walletAddress: Address; playerId?: string; score: bigint; metadata?: Record<string, unknown> }>>
+    computeFn: () => Promise<Array<{ walletAddress: Address; playerId?: string; score: bigint; metadata?: Record<string, unknown> }>>
   ): Promise<LeaderboardEntry[]> {
     await this.refreshIfStale(type);
-    return leaderboardRepository.getLeaderboard(type, limit);
+    const cached = await leaderboardRepository.getLeaderboard(type, limit);
+
+    // If cache is empty, compute directly as fallback
+    if (cached.length === 0) {
+      logger.info({ type }, 'Cache empty, computing leaderboard directly');
+      try {
+        const entries = await computeFn();
+        return entries.slice(0, limit).map((entry, index) => ({
+          rank: index + 1,
+          walletAddress: entry.walletAddress,
+          playerId: entry.playerId,
+          score: entry.score,
+          farcasterUsername: entry.metadata?.farcaster_username as string | undefined,
+          metadata: entry.metadata || {},
+        }));
+      } catch (error) {
+        logger.error({ error, type }, 'Error computing leaderboard directly');
+        return [];
+      }
+    }
+
+    return cached;
   }
 
   private async refreshIfStale(type: LeaderboardType): Promise<void> {
     const lastComputed = await leaderboardRepository.getLastComputedAt(type);
+    const isStale = !lastComputed || Date.now() - lastComputed.getTime() > CACHE_DURATION_MS;
 
-    if (!lastComputed || Date.now() - lastComputed.getTime() > CACHE_DURATION_MS) {
+    logger.debug({ type, lastComputed, isStale }, 'Checking leaderboard cache staleness');
+
+    if (isStale) {
+      logger.info({ type }, 'Leaderboard cache stale, refreshing');
       await this.computeAndSaveLeaderboard(type, () => this.computeLeaderboardByType(type));
     }
   }
