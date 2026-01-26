@@ -41,4 +41,22 @@ router.get(
   })
 );
 
+// Debug endpoint to check top donors
+router.get(
+  '/debug/top-donors',
+  standardRateLimit,
+  asyncHandler(async (_req, res) => {
+    const topDonors = await playerRepository.getTopByYeet(10);
+
+    res.json({
+      success: true,
+      data: topDonors.map(p => ({
+        walletAddress: p.walletAddress,
+        totalYeeted: p.totalYeeted.toString(),
+        farcasterUsername: p.farcasterUsername,
+      })),
+    });
+  })
+);
+
 export default router;
