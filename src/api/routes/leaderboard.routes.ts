@@ -1,20 +1,29 @@
 import { Router } from 'express';
 import { leaderboardService } from '../../services/analytics/LeaderboardService.js';
 import { leaderboardImageService } from '../../services/images/LeaderboardImageService.js';
-import { extractWalletAddress } from '../middleware/auth.js';
-import { standardRateLimit } from '../middleware/rateLimit.js';
+import { gameScoreRepository } from '../../repositories/GameScoreRepository.js';
+import { playerRepository } from '../../repositories/PlayerRepository.js';
+import { extractWalletAddress, requireWallet, loadPlayer } from '../middleware/auth.js';
+import { standardRateLimit, txRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
-import { paginationSchema, addressSchema } from '../../types/index.js';
-import type { Address, LeaderboardType } from '../../types/index.js';
+import { paginationSchema, addressSchema, gameIdSchema, submitScoreSchema, VALID_GAME_IDS } from '../../types/index.js';
+import type { Address, LeaderboardType, GameId } from '../../types/index.js';
 
 const router = Router();
 
-// Image endpoint - no auth needed, cached for sharing
+// Game-specific image endpoint - no auth needed, cached for sharing
 router.get(
-  '/image',
+  '/image/:gameId',
   standardRateLimit,
   asyncHandler(async (req, res) => {
-    const imageBuffer = await leaderboardImageService.generateImage('yeet');
+    const { gameId } = req.params;
+
+    // Validate gameId
+    if (!gameId || !VALID_GAME_IDS.includes(gameId as GameId)) {
+      throw new ValidationError(`Invalid game ID. Valid games: ${VALID_GAME_IDS.join(', ')}`);
+    }
+
+    const imageBuffer = await leaderboardImageService.generateImage(gameId as GameId);
 
     // Set cache headers for CDN/browser caching
     res.set({
@@ -23,6 +32,76 @@ router.get(
     });
 
     res.send(imageBuffer);
+  })
+);
+
+// Get game-specific leaderboard - no auth needed
+router.get(
+  '/game/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { limit } = paginationSchema.parse(req.query);
+
+    // Validate gameId
+    if (!gameId || !VALID_GAME_IDS.includes(gameId as GameId)) {
+      throw new ValidationError(`Invalid game ID. Valid games: ${VALID_GAME_IDS.join(', ')}`);
+    }
+
+    const entries = await gameScoreRepository.getTopScores(gameId as GameId, limit);
+
+    res.json({
+      success: true,
+      data: entries.map((entry) => ({
+        rank: entry.rank,
+        walletAddress: entry.walletAddress,
+        farcasterUsername: entry.farcasterUsername,
+        score: entry.score.toString(),
+      })),
+    });
+  })
+);
+
+// Submit a game score - requires auth
+router.post(
+  '/game/:gameId/score',
+  txRateLimit,
+  extractWalletAddress,
+  requireWallet,
+  loadPlayer,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { score } = submitScoreSchema.parse({ ...req.body, gameId });
+
+    // Validate gameId
+    if (!gameId || !VALID_GAME_IDS.includes(gameId as GameId)) {
+      throw new ValidationError(`Invalid game ID. Valid games: ${VALID_GAME_IDS.join(', ')}`);
+    }
+
+    // Get player info for Farcaster details
+    const player = await playerRepository.findByWallet(req.walletAddress!);
+
+    const gameScore = await gameScoreRepository.submitScore(
+      req.walletAddress! as Address,
+      gameId as GameId,
+      score,
+      player?.id,
+      player?.farcasterUsername || undefined,
+      player?.farcasterFid || undefined
+    );
+
+    // Get player's rank after submission
+    const rank = await gameScoreRepository.getPlayerRank(req.walletAddress! as Address, gameId as GameId);
+
+    res.json({
+      success: true,
+      data: {
+        id: gameScore.id,
+        gameId: gameScore.gameId,
+        score: gameScore.score.toString(),
+        rank,
+      },
+    });
   })
 );
 

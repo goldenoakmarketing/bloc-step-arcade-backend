@@ -351,6 +351,38 @@ export interface Database {
           created_at?: string;
         };
       };
+      game_scores: {
+        Row: {
+          id: string;
+          player_id: string | null;
+          wallet_address: string;
+          game_id: string;
+          score: number;
+          farcaster_username: string | null;
+          farcaster_fid: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          player_id?: string | null;
+          wallet_address: string;
+          game_id: string;
+          score: number;
+          farcaster_username?: string | null;
+          farcaster_fid?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          player_id?: string | null;
+          wallet_address?: string;
+          game_id?: string;
+          score?: number;
+          farcaster_username?: string | null;
+          farcaster_fid?: number | null;
+          created_at?: string;
+        };
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

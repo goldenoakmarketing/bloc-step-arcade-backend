@@ -130,6 +130,45 @@ export interface LeaderboardEntry {
 
 export type LeaderboardType = 'yeet' | 'staking' | 'time_played' | 'tips_sent' | 'tips_received';
 
+// Game types
+export const VALID_GAME_IDS = [
+  'snake',
+  'ping',
+  'drbloc',
+  'solitaire',
+  'angryblocs',
+  'hextris',
+  'endless-runner',
+  'flappy-bird',
+  '2048',
+] as const;
+
+export type GameId = (typeof VALID_GAME_IDS)[number];
+
+export const gameIdSchema = z.enum(VALID_GAME_IDS);
+
+export interface GameScore {
+  id: string;
+  playerId?: string;
+  walletAddress: Address;
+  gameId: GameId;
+  score: bigint;
+  farcasterUsername?: string;
+  farcasterFid?: number;
+  createdAt: Date;
+}
+
+export interface SubmitScoreInput {
+  walletAddress: Address;
+  gameId: GameId;
+  score: number;
+}
+
+export const submitScoreSchema = z.object({
+  gameId: gameIdSchema,
+  score: z.number().int().nonnegative().max(999999999),
+});
+
 // Staking types
 export interface StakingEvent {
   id: string;
