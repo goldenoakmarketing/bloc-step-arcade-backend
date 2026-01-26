@@ -374,8 +374,8 @@ export class LeaderboardImageService {
   }
 
   private async drawPlaceholderPfp(ctx: SKRSContext2D, x: number, y: number, size: number) {
-    // Default arcade cabinet image URL
-    const defaultPfpUrl = 'https://blocsteparcade.netlify.app/arcade-cabinet.jpg';
+    // Default arcade cabinet image URL (hosted on GitHub)
+    const defaultPfpUrl = 'https://raw.githubusercontent.com/goldenoakmarketing/bloc-step-arcade-frontend/main/public/arcade-cabinet.jpg';
 
     try {
       // Try to load the arcade cabinet image
