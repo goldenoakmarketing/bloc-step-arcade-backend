@@ -21,9 +21,10 @@ export class GameScoreRepository {
     score: number,
     playerId?: string,
     farcasterUsername?: string,
-    farcasterFid?: number
+    farcasterFid?: number,
+    farcasterPfp?: string
   ): Promise<GameScore> {
-    logger.info({ walletAddress, gameId, score, playerId, farcasterUsername, farcasterFid }, 'Submitting game score');
+    logger.info({ walletAddress, gameId, score, playerId, farcasterUsername, farcasterFid, farcasterPfp }, 'Submitting game score');
 
     const wallet = walletAddress.toLowerCase();
 
@@ -61,7 +62,7 @@ export class GameScoreRepository {
       }
 
       // Check if this score makes them #1 and update the champion
-      await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername);
+      await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername, farcasterPfp);
       return this.mapToGameScore(updated);
     }
 
@@ -99,7 +100,7 @@ export class GameScoreRepository {
     logger.info({ id: data.id, walletAddress, gameId, score }, 'Score submitted successfully');
 
     // Check if this score makes them #1 and update the champion
-    await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername);
+    await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername, farcasterPfp);
 
     return this.mapToGameScore(data);
   }
@@ -109,7 +110,8 @@ export class GameScoreRepository {
     walletAddress: Address,
     score: number,
     farcasterFid?: number,
-    farcasterUsername?: string
+    farcasterUsername?: string,
+    farcasterPfp?: string
   ): Promise<void> {
     try {
       // Get current champion
@@ -119,9 +121,9 @@ export class GameScoreRepository {
       if (!currentChampion || BigInt(score) > currentChampion.score) {
         logger.info({ gameId, walletAddress, score, previousScore: currentChampion?.score?.toString() }, 'New champion!');
 
-        // Fetch PFP if they have a Farcaster account
-        let pfpUrl: string | undefined;
-        if (farcasterFid) {
+        // Use provided PFP first, otherwise fetch from API if they have FID
+        let pfpUrl: string | undefined = farcasterPfp;
+        if (!pfpUrl && farcasterFid) {
           pfpUrl = (await gameChampionRepository.fetchAndStorePfp(farcasterFid)) || undefined;
         }
 

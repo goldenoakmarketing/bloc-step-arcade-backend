@@ -201,7 +201,7 @@ router.post(
   loadPlayer,
   asyncHandler(async (req, res) => {
     const { gameId } = req.params;
-    const { score, farcasterUsername, farcasterFid } = submitScoreSchema.parse({ ...req.body, gameId });
+    const { score, farcasterUsername, farcasterFid, farcasterPfp } = submitScoreSchema.parse({ ...req.body, gameId });
 
     // Validate gameId
     if (!gameId || !VALID_GAME_IDS.includes(gameId as GameId)) {
@@ -214,6 +214,7 @@ router.post(
     // Use request body Farcaster data as fallback if player record doesn't have it
     const finalFarcasterUsername = player?.farcasterUsername || farcasterUsername;
     const finalFarcasterFid = player?.farcasterFid || farcasterFid;
+    const finalFarcasterPfp = farcasterPfp; // Use the PFP from the request (frontend has it from SDK)
 
     const gameScore = await gameScoreRepository.submitScore(
       req.walletAddress! as Address,
@@ -221,7 +222,8 @@ router.post(
       score,
       player?.id,
       finalFarcasterUsername,
-      finalFarcasterFid
+      finalFarcasterFid,
+      finalFarcasterPfp
     );
 
     // Get player's rank after submission
