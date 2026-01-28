@@ -11,6 +11,40 @@ import type { Address, LeaderboardType, GameId } from '../../types/index.js';
 
 const router = Router();
 
+// Debug endpoint to check game_scores table
+router.get(
+  '/debug/game-scores/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { supabase } = await import('../../config/supabase.js');
+
+    // Direct query to see what's in the table
+    const { data, error, count } = await supabase
+      .from('game_scores')
+      .select('*', { count: 'exact' })
+      .eq('game_id', gameId)
+      .order('score', { ascending: false })
+      .limit(10);
+
+    res.json({
+      success: true,
+      debug: {
+        gameId,
+        error: error ? { code: error.code, message: error.message, details: error.details } : null,
+        rowCount: count,
+        rows: data?.map(r => ({
+          id: r.id,
+          wallet: r.wallet_address?.slice(0, 10) + '...',
+          score: r.score,
+          gameId: r.game_id,
+          createdAt: r.created_at,
+        })) || [],
+      },
+    });
+  })
+);
+
 // Game-specific image endpoint - no auth needed, cached for sharing
 router.get(
   '/image/:gameId',
@@ -97,14 +131,17 @@ router.post(
     // Get player's rank after submission
     const rank = await gameScoreRepository.getPlayerRank(req.walletAddress! as Address, gameId as GameId);
 
+    // Log the response for debugging
+    const responseData = {
+      id: gameScore.id,
+      gameId: gameScore.gameId,
+      score: gameScore.score.toString(),
+      rank,
+    };
+
     res.json({
       success: true,
-      data: {
-        id: gameScore.id,
-        gameId: gameScore.gameId,
-        score: gameScore.score.toString(),
-        rank,
-      },
+      data: responseData,
     });
   })
 );
