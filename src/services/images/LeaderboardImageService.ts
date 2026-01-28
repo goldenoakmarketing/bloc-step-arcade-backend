@@ -381,9 +381,9 @@ export class LeaderboardImageService {
       ctx.fillText(`#${i + 1}  --- empty ---`, listX, y);
     }
 
-    // Draw footer
-    ctx.fillStyle = COLORS.textMuted;
-    ctx.font = `18px ${getFontFamily()}`;
+    // Draw footer with app URL (prominent for sharing)
+    ctx.fillStyle = COLORS.neonPurple;
+    ctx.font = `bold 20px ${getFontFamily()}`;
     ctx.textAlign = 'center';
     ctx.fillText('blocsteparcade.netlify.app', WIDTH / 2, HEIGHT - 45);
 
