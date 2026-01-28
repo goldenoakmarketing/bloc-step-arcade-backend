@@ -80,9 +80,27 @@ router.post(
   asyncHandler(async (req, res) => {
     const walletAddress = req.walletAddress!;
 
-    logger.info({ walletAddress }, 'Claim request received');
+    logger.info({ walletAddress }, 'POST /claim - Request received');
 
-    const result = await lostFoundPoolService.claimFromPool(walletAddress);
+    // Get pool state for logging
+    const poolStats = await lostFoundPoolService.getPoolStats();
+    logger.info({
+      walletAddress,
+      poolBalance: poolStats.balance,
+      contractQuarters: poolStats.contractQuarters,
+    }, 'POST /claim - Pool state before claim');
+
+    let result;
+    try {
+      result = await lostFoundPoolService.claimFromPool(walletAddress);
+    } catch (error) {
+      logger.error({
+        walletAddress,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      }, 'POST /claim - claimFromPool threw error');
+      throw error;
+    }
 
     logger.info({
       walletAddress,
@@ -91,32 +109,44 @@ router.post(
       streak: result.streak,
       cooldownActive: result.cooldownActive,
       txHash: result.txHash,
-    }, 'Claim result');
+      nextClaimTime: result.nextClaimTime.toISOString(),
+    }, 'POST /claim - Claim result from service');
+
+    // Calculate maxClaimable for response
+    const maxClaimable = lostFoundPoolService.getMaxClaimable(result.streak);
 
     if (result.cooldownActive) {
+      const responseData = {
+        claimed: 0,
+        canClaim: false,
+        poolBalanceAfter: result.poolBalanceAfter,
+        streak: result.streak,
+        maxClaimable,
+        nextClaimTime: result.nextClaimTime.toISOString(),
+        cooldownActive: true,
+      };
+      logger.info({ walletAddress, responseData }, 'POST /claim - Returning 429 cooldown response');
       res.status(429).json({
         success: false,
         error: 'Cooldown active',
-        data: {
-          claimed: 0,
-          poolBalanceAfter: result.poolBalanceAfter,
-          streak: result.streak,
-          nextClaimTime: result.nextClaimTime.toISOString(),
-          cooldownActive: true,
-        },
+        data: responseData,
       });
       return;
     }
 
+    const responseData = {
+      claimed: result.claimed,
+      canClaim: false, // Just claimed, so can't claim again
+      poolBalanceAfter: result.poolBalanceAfter,
+      streak: result.streak,
+      maxClaimable,
+      nextClaimTime: result.nextClaimTime.toISOString(),
+      txHash: result.txHash,
+    };
+    logger.info({ walletAddress, responseData }, 'POST /claim - Returning success response');
     res.json({
       success: true,
-      data: {
-        claimed: result.claimed,
-        poolBalanceAfter: result.poolBalanceAfter,
-        streak: result.streak,
-        nextClaimTime: result.nextClaimTime.toISOString(),
-        txHash: result.txHash,
-      },
+      data: responseData,
     });
   })
 );
