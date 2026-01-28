@@ -1,10 +1,18 @@
 import { Router } from 'express';
+import { parseAbiItem } from 'viem';
 import { lostFoundPoolService } from '../../services/blockchain/LostFoundPoolService.js';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
+import { publicClient } from '../../config/blockchain.js';
+import { contractAddresses } from '../../config/contracts.js';
 import { extractWalletAddress, requireWallet } from '../middleware/auth.js';
 import { strictRateLimit, standardRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, ValidationError } from '../middleware/errorHandler.js';
 import { addressSchema } from '../../types/index.js';
+import { createChildLogger } from '../../utils/logger.js';
+
+const logger = createChildLogger('PoolRoutes');
+
+const QUARTER_WEI = 250n * 10n ** 18n; // 250 BLOC per quarter
 
 const router = Router();
 
@@ -112,6 +120,52 @@ router.post(
 
     if (!txHash || typeof txHash !== 'string') {
       throw new ValidationError('Invalid transaction hash');
+    }
+
+    // Verify the on-chain transaction
+    let receipt;
+    try {
+      receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+    } catch (error) {
+      logger.warn({ txHash, error }, 'Failed to fetch transaction receipt');
+      throw new ValidationError('Transaction not found or not yet confirmed');
+    }
+
+    if (receipt.status !== 'success') {
+      throw new ValidationError('Transaction failed on-chain');
+    }
+
+    // Parse Transfer logs to verify BLOC was sent to PoolPayout
+    const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
+    const expectedAmount = BigInt(quarters) * QUARTER_WEI;
+
+    const matchingLog = receipt.logs.find((log) => {
+      // Must be from the BLOC token contract
+      if (log.address.toLowerCase() !== contractAddresses.blocToken.toLowerCase()) return false;
+
+      // Must have 3 topics (event sig + from + to)
+      if (!log.topics || log.topics.length < 3) return false;
+
+      // Decode from and to from indexed topics
+      const from = ('0x' + log.topics[1]!.slice(26)).toLowerCase();
+      const to = ('0x' + log.topics[2]!.slice(26)).toLowerCase();
+
+      // Verify sender matches walletAddress
+      if (from !== walletAddress.toLowerCase()) return false;
+
+      // Verify recipient is the PoolPayout contract
+      if (to !== contractAddresses.poolPayout.toLowerCase()) return false;
+
+      // Verify amount matches
+      const amount = BigInt(log.data);
+      if (amount !== expectedAmount) return false;
+
+      return true;
+    });
+
+    if (!matchingLog) {
+      logger.warn({ txHash, walletAddress, quarters }, 'Deposit tx verification failed: no matching Transfer log');
+      throw new ValidationError('Invalid transaction: no matching BLOC transfer to pool found');
     }
 
     const result = await lostFoundPoolService.processVoluntaryDonation(quarters);

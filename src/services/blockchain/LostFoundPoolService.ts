@@ -71,10 +71,10 @@ export class LostFoundPoolService {
     const addedToPool = Math.min(quarters, spaceInPool)
     const overflow = quarters - addedToPool
 
-    // Split overflow 60/25/15
+    // Split overflow 60/25/15 — profit gets remainder to avoid rounding loss
     const overflowToStaking = Math.floor(overflow * (OVERFLOW_STAKING_PERCENT / 100))
     const overflowToStability = Math.floor(overflow * (OVERFLOW_STABILITY_PERCENT / 100))
-    const overflowToProfit = Math.floor(overflow * (OVERFLOW_PROFIT_PERCENT / 100))
+    const overflowToProfit = overflow - overflowToStaking - overflowToStability
 
     // Update database
     if (addedToPool > 0 || overflow > 0) {
