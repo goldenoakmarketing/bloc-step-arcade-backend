@@ -51,6 +51,14 @@ router.get(
 
     const claimInfo = await lostFoundPoolService.getClaimInfo(wallet.toLowerCase());
 
+    logger.info({
+      wallet: wallet.toLowerCase(),
+      canClaim: claimInfo.canClaim,
+      nextClaimTime: claimInfo.nextClaimTime?.toISOString(),
+      streak: claimInfo.streak,
+      maxClaimable: claimInfo.maxClaimable,
+    }, 'Claim info requested');
+
     res.json({
       success: true,
       data: {
@@ -72,7 +80,18 @@ router.post(
   asyncHandler(async (req, res) => {
     const walletAddress = req.walletAddress!;
 
+    logger.info({ walletAddress }, 'Claim request received');
+
     const result = await lostFoundPoolService.claimFromPool(walletAddress);
+
+    logger.info({
+      walletAddress,
+      claimed: result.claimed,
+      poolBalanceAfter: result.poolBalanceAfter,
+      streak: result.streak,
+      cooldownActive: result.cooldownActive,
+      txHash: result.txHash,
+    }, 'Claim result');
 
     if (result.cooldownActive) {
       res.status(429).json({

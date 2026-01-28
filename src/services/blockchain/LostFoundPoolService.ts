@@ -194,17 +194,10 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Get next 00:00 UTC reset time after a given timestamp
+   * Get the time when cooldown expires (24 hours after given timestamp)
    */
   private getNextResetTime(afterTimestamp: number): Date {
-    const date = new Date(afterTimestamp)
-    const nextDay = new Date(Date.UTC(
-      date.getUTCFullYear(),
-      date.getUTCMonth(),
-      date.getUTCDate() + 1,
-      0, 0, 0, 0
-    ))
-    return nextDay
+    return new Date(afterTimestamp + COOLDOWN_MS)
   }
 
   /**
