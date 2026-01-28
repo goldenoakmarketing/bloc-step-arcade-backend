@@ -45,6 +45,40 @@ router.get(
   })
 );
 
+// Debug endpoint to test direct insert (no auth)
+router.post(
+  '/debug/test-insert/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { score, wallet } = req.body;
+    const { supabase } = await import('../../config/supabase.js');
+
+    // Try direct insert to see exact error
+    const { data, error } = await supabase
+      .from('game_scores')
+      .insert({
+        wallet_address: (wallet || '0x0000000000000000000000000000000000000001').toLowerCase(),
+        game_id: gameId,
+        score: score || 100,
+        player_id: null,
+        farcaster_username: null,
+        farcaster_fid: null,
+      })
+      .select()
+      .single();
+
+    res.json({
+      success: !error,
+      debug: {
+        gameId,
+        inserted: data,
+        error: error ? { code: error.code, message: error.message, details: error.details, hint: error.hint } : null,
+      },
+    });
+  })
+);
+
 // Game-specific image endpoint - no auth needed, cached for sharing
 router.get(
   '/image/:gameId',
