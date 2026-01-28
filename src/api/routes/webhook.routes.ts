@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { createChildLogger } from '../../utils/logger.js';
 import { neynarClient } from '../../services/farcaster/NeynarClient.js';
 import { tipCommandService } from '../../services/farcaster/TipCommandService.js';
+import { notificationRepository } from '../../repositories/NotificationRepository.js';
 import { webhookRateLimit } from '../middleware/rateLimit.js';
 import { asyncHandler, UnauthorizedError } from '../middleware/errorHandler.js';
 
@@ -24,6 +25,16 @@ interface NeynarWebhookPayload {
       username: string;
     }>;
     parent_hash?: string;
+  };
+}
+
+// Farcaster Mini App webhook types
+interface FarcasterMiniAppWebhookPayload {
+  event: 'miniapp_added' | 'miniapp_removed' | 'notifications_disabled' | 'notifications_enabled';
+  fid: number;
+  notificationDetails?: {
+    url: string;
+    token: string;
   };
 }
 
@@ -113,6 +124,46 @@ async function handleMention(payload: NeynarWebhookPayload): Promise<void> {
     }
   }
 }
+
+// Farcaster Mini App webhook (notifications)
+// This endpoint receives events when users add/remove the app or enable/disable notifications
+router.post(
+  '/miniapp',
+  webhookRateLimit,
+  asyncHandler(async (req, res) => {
+    const payload = req.body as FarcasterMiniAppWebhookPayload;
+
+    logger.info({ event: payload.event, fid: payload.fid }, 'Received Farcaster Mini App webhook');
+
+    switch (payload.event) {
+      case 'miniapp_added':
+      case 'notifications_enabled':
+        // User added the app or re-enabled notifications
+        if (payload.notificationDetails) {
+          logger.info({ fid: payload.fid }, 'Saving notification token');
+          // Note: We don't have wallet address from webhook, it will be updated when user registers via frontend
+          await notificationRepository.enable(
+            payload.fid,
+            payload.notificationDetails.url,
+            payload.notificationDetails.token
+          );
+        }
+        break;
+
+      case 'miniapp_removed':
+      case 'notifications_disabled':
+        // User removed the app or disabled notifications
+        logger.info({ fid: payload.fid }, 'Disabling notification token');
+        await notificationRepository.disable(payload.fid);
+        break;
+
+      default:
+        logger.debug({ event: payload.event }, 'Unhandled mini app webhook event');
+    }
+
+    res.json({ success: true, message: 'Webhook processed' });
+  })
+);
 
 // Health check for webhooks
 router.get(

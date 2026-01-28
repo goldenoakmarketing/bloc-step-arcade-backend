@@ -16,6 +16,8 @@ import leaderboardRoutes from './api/routes/leaderboard.routes.js';
 import webhookRoutes from './api/routes/webhook.routes.js';
 import poolRoutes from './api/routes/pool.routes.js';
 import statsRoutes from './api/routes/stats.routes.js';
+import notificationRoutes from './api/routes/notification.routes.js';
+import { cooldownNotificationService } from './services/notifications/CooldownNotificationService.js';
 
 const app = express();
 
@@ -96,8 +98,10 @@ app.use('/api/v1/game', gameRoutes);
 app.use('/api/v1/players', playerRoutes);
 app.use('/api/v1/leaderboards', leaderboardRoutes);
 app.use('/api/v1/webhooks', webhookRoutes);
+app.use('/api/v1/webhook', webhookRoutes); // Also support /webhook for Farcaster manifest compatibility
 app.use('/api/v1/pool', poolRoutes);
 app.use('/api/v1/stats', statsRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // 404 handler
 app.use(notFoundHandler);
@@ -116,6 +120,9 @@ async function shutdown(signal: string): Promise<void> {
 
   // Stop event listener
   eventListenerService.stop();
+
+  // Stop cooldown notification service
+  cooldownNotificationService.stop();
 
   // Give time for ongoing requests to complete
   await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -137,6 +144,9 @@ async function start(): Promise<void> {
       eventListenerService.start().catch((error) => {
         logger.error({ error }, 'Event listener error');
       });
+
+      // Start cooldown notification service
+      cooldownNotificationService.start();
 
       // Initialize leaderboards
       leaderboardService.refreshAllLeaderboards().catch((error) => {
