@@ -146,36 +146,49 @@ export class PlayerRepository {
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_yeeted', 0)
-      .order('total_yeeted', { ascending: false })
-      .limit(limit);
+      .gt('total_yeeted', 0);
 
     if (!data || data.length === 0) return [];
-    return data.map(this.mapToPlayer);
+
+    // Sort in application code to ensure numeric comparison
+    const sorted = data
+      .sort((a, b) => Number(b.total_yeeted || 0) - Number(a.total_yeeted || 0))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async getTopByStaking(limit = 100): Promise<Player[]> {
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('cached_staked_balance', 0)
-      .order('cached_staked_balance', { ascending: false })
-      .limit(limit);
+      .gt('cached_staked_balance', 0);
 
     if (!data || data.length === 0) return [];
-    return data.map(this.mapToPlayer);
+
+    // Sort in application code to ensure numeric comparison
+    // (Supabase may do string comparison if column is TEXT)
+    const sorted = data
+      .sort((a, b) => Number(b.cached_staked_balance || 0) - Number(a.cached_staked_balance || 0))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async getTopByTimePlayed(limit = 100): Promise<Player[]> {
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_time_consumed', 0)
-      .order('total_time_consumed', { ascending: false })
-      .limit(limit);
+      .gt('total_time_consumed', 0);
 
     if (!data || data.length === 0) return [];
-    return data.map(this.mapToPlayer);
+
+    // Sort in application code to ensure numeric comparison
+    const sorted = data
+      .sort((a, b) => Number(b.total_time_consumed || 0) - Number(a.total_time_consumed || 0))
+      .slice(0, limit);
+
+    return sorted.map(this.mapToPlayer);
   }
 
   async count(): Promise<number> {
@@ -259,11 +272,13 @@ export class PlayerRepository {
     const { data } = await supabase
       .from('players')
       .select('wallet_address, total_yeeted')
-      .gt('total_yeeted', 0)
-      .order('total_yeeted', { ascending: false });
+      .gt('total_yeeted', 0);
 
     if (!data) return null;
-    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+
+    // Sort in application code to ensure numeric comparison
+    const sorted = data.sort((a, b) => Number(b.total_yeeted || 0) - Number(a.total_yeeted || 0));
+    const index = sorted.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
     return index >= 0 ? index + 1 : null;
   }
 
@@ -271,11 +286,13 @@ export class PlayerRepository {
     const { data } = await supabase
       .from('players')
       .select('wallet_address, cached_staked_balance')
-      .gt('cached_staked_balance', 0)
-      .order('cached_staked_balance', { ascending: false });
+      .gt('cached_staked_balance', 0);
 
     if (!data) return null;
-    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+
+    // Sort in application code to ensure numeric comparison
+    const sorted = data.sort((a, b) => Number(b.cached_staked_balance || 0) - Number(a.cached_staked_balance || 0));
+    const index = sorted.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
     return index >= 0 ? index + 1 : null;
   }
 
@@ -283,11 +300,13 @@ export class PlayerRepository {
     const { data } = await supabase
       .from('players')
       .select('wallet_address, total_time_consumed')
-      .gt('total_time_consumed', 0)
-      .order('total_time_consumed', { ascending: false });
+      .gt('total_time_consumed', 0);
 
     if (!data) return null;
-    const index = data.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
+
+    // Sort in application code to ensure numeric comparison
+    const sorted = data.sort((a, b) => Number(b.total_time_consumed || 0) - Number(a.total_time_consumed || 0));
+    const index = sorted.findIndex(p => p.wallet_address.toLowerCase() === walletAddress.toLowerCase());
     return index >= 0 ? index + 1 : null;
   }
 

@@ -174,11 +174,14 @@ export class LeaderboardService {
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_tips_sent', 0)
-      .order('total_tips_sent', { ascending: false })
-      .limit(100);
+      .gt('total_tips_sent', 0);
 
-    return (data || []).map((player) => ({
+    // Sort in application code to ensure numeric comparison
+    const sorted = (data || [])
+      .sort((a, b) => Number(b.total_tips_sent || 0) - Number(a.total_tips_sent || 0))
+      .slice(0, 100);
+
+    return sorted.map((player) => ({
       walletAddress: player.wallet_address as Address,
       playerId: player.id,
       score: BigInt(player.total_tips_sent),
@@ -193,11 +196,14 @@ export class LeaderboardService {
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_tips_received', 0)
-      .order('total_tips_received', { ascending: false })
-      .limit(100);
+      .gt('total_tips_received', 0);
 
-    return (data || []).map((player) => ({
+    // Sort in application code to ensure numeric comparison
+    const sorted = (data || [])
+      .sort((a, b) => Number(b.total_tips_received || 0) - Number(a.total_tips_received || 0))
+      .slice(0, 100);
+
+    return sorted.map((player) => ({
       walletAddress: player.wallet_address as Address,
       playerId: player.id,
       score: BigInt(player.total_tips_received),

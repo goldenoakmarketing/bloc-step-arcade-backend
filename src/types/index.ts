@@ -169,6 +169,9 @@ export interface SubmitScoreInput {
 export const submitScoreSchema = z.object({
   gameId: gameIdSchema,
   score: z.number().int().nonnegative().max(999999999),
+  farcasterUsername: z.string().optional(),
+  farcasterFid: z.number().int().positive().optional(),
+  farcasterPfp: z.string().url().optional(),
 });
 
 // Staking types
