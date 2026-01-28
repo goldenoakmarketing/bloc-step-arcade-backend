@@ -124,7 +124,7 @@ export class NotificationService {
         await notificationRepository.disable(token.farcasterFid);
       }
 
-      const success = result.successfulTokens && result.successfulTokens.length > 0;
+      const success = (result.successfulTokens && result.successfulTokens.length > 0) ?? false;
 
       logger.info({
         fid: token.farcasterFid,
