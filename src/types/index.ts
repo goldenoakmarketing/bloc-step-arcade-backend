@@ -142,6 +142,7 @@ export const VALID_GAME_IDS = [
   'endless-runner',
   'flappy-bird',
   '2048',
+  'breakout',
 ] as const;
 
 export type GameId = (typeof VALID_GAME_IDS)[number];
