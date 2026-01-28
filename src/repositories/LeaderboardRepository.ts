@@ -66,6 +66,7 @@ export class LeaderboardRepository {
       player_id: entry.playerId,
       rank: index + 1,
       score: entry.score.toString(),
+      farcaster_username: (entry.metadata?.farcaster_username as string) || null,
       metadata: entry.metadata || {},
       computed_at: new Date().toISOString(),
     }));
@@ -98,6 +99,7 @@ export class LeaderboardRepository {
     wallet_address: string;
     player_id: string | null;
     score: string;
+    farcaster_username: string | null;
     metadata: unknown;
   }): LeaderboardEntry {
     const metadata = data.metadata as Record<string, unknown>;
@@ -106,7 +108,8 @@ export class LeaderboardRepository {
       walletAddress: data.wallet_address as Address,
       playerId: data.player_id || undefined,
       score: BigInt(data.score),
-      farcasterUsername: metadata.farcaster_username as string | undefined,
+      // Read from dedicated column first, fallback to metadata for backwards compatibility
+      farcasterUsername: data.farcaster_username || (metadata.farcaster_username as string | undefined),
       metadata,
     };
   }

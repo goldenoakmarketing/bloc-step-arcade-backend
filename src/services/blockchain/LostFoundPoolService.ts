@@ -275,6 +275,7 @@ export class LostFoundPoolService {
         poolBalanceAfter: poolState.balance,
         streak: newStreak,
         nextClaimTime: this.getNextResetTime(now),
+        cooldownActive: false,  // Not on cooldown, just empty pool
       }
     }
 
@@ -365,6 +366,7 @@ export class LostFoundPoolService {
       poolBalanceAfter: newPoolBalance,
       streak: newStreak,
       nextClaimTime: this.getNextResetTime(now),
+      cooldownActive: false,  // Explicit success - claim completed
       txHash,
     }
   }
