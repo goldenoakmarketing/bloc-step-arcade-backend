@@ -180,13 +180,24 @@ export class LeaderboardImageService {
   async generateImage(gameId: GameId): Promise<Buffer> {
     // Ensure fonts are loaded before drawing
     await ensureFontsInitialized();
-    logger.info({ fontFamily: getFontFamily() }, 'Using font family for image generation');
+    logger.info({ fontFamily: getFontFamily(), gameId }, 'Starting image generation');
 
     const canvas = createCanvas(WIDTH, HEIGHT);
     const ctx = canvas.getContext('2d');
 
     // Get game-specific leaderboard data
     const entries = await gameScoreRepository.getTopScores(gameId, 5);
+    logger.info({
+      gameId,
+      entriesCount: entries.length,
+      entries: entries.map(e => ({
+        rank: e.rank,
+        wallet: e.walletAddress?.slice(0, 10),
+        score: e.score?.toString(),
+        username: e.farcasterUsername
+      }))
+    }, 'Fetched entries for image');
+
     const gameInfo = GAME_INFO[gameId] || { name: gameId.toUpperCase(), emoji: '🎮' };
 
     // Draw background gradient
@@ -230,6 +241,14 @@ export class LeaderboardImageService {
     // Try to get champion PFP from cached game_champions table first
     const champion = await gameChampionRepository.getChampion(gameId);
     const pfpUrl = champion?.farcasterPfp;
+    logger.info({
+      gameId,
+      hasChampion: !!champion,
+      championWallet: champion?.walletAddress?.slice(0, 10),
+      championScore: champion?.score?.toString(),
+      hasPfp: !!pfpUrl,
+      pfpUrl: pfpUrl?.slice(0, 50)
+    }, 'Champion data for image');
 
     if (pfpUrl) {
       try {
