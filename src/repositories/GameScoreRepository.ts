@@ -25,14 +25,16 @@ export class GameScoreRepository {
   ): Promise<GameScore> {
     logger.info({ walletAddress, gameId, score, playerId, farcasterUsername, farcasterFid }, 'Submitting game score');
 
-    // Build insert data - only include optional fields if defined
-    // This works around Supabase schema cache issues with player_id
+    // Build insert data
+    // NOTE: player_id is intentionally excluded due to Supabase schema cache issue
+    // The wallet_address serves as the primary identifier
     const insertData: Record<string, unknown> = {
       wallet_address: walletAddress.toLowerCase(),
       game_id: gameId,
       score,
     };
-    if (playerId) insertData.player_id = playerId;
+    // player_id excluded: schema cache doesn't recognize the column
+    // if (playerId) insertData.player_id = playerId;
     if (farcasterUsername) insertData.farcaster_username = farcasterUsername;
     if (farcasterFid) insertData.farcaster_fid = farcasterFid;
 
@@ -197,17 +199,17 @@ export class GameScoreRepository {
 
   private mapToGameScore(data: {
     id: string;
-    player_id: string | null;
+    player_id?: string | null;
     wallet_address: string;
     game_id: string;
     score: number;
-    farcaster_username: string | null;
-    farcaster_fid: number | null;
+    farcaster_username?: string | null;
+    farcaster_fid?: number | null;
     created_at: string;
   }): GameScore {
     return {
       id: data.id,
-      playerId: data.player_id || undefined,
+      playerId: data.player_id ?? undefined,
       walletAddress: data.wallet_address as Address,
       gameId: data.game_id as GameId,
       score: BigInt(data.score),
