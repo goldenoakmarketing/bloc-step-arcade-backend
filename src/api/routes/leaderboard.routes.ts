@@ -11,6 +11,38 @@ import type { Address, LeaderboardType, GameId } from '../../types/index.js';
 
 const router = Router();
 
+// Debug endpoint to check game_champions table
+router.get(
+  '/debug/game-champion/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { supabase } = await import('../../config/supabase.js');
+
+    const { data, error } = await supabase
+      .from('game_champions')
+      .select('*')
+      .eq('game_id', gameId)
+      .single();
+
+    res.json({
+      success: true,
+      debug: {
+        gameId,
+        error: error ? { code: error.code, message: error.message } : null,
+        champion: data ? {
+          wallet: data.wallet_address?.slice(0, 10) + '...',
+          score: data.score,
+          farcasterUsername: data.farcaster_username,
+          farcasterFid: data.farcaster_fid,
+          farcasterPfp: data.farcaster_pfp?.slice(0, 50),
+          updatedAt: data.updated_at,
+        } : null,
+      },
+    });
+  })
+);
+
 // Debug endpoint to check game_scores table
 router.get(
   '/debug/game-scores/:gameId',
