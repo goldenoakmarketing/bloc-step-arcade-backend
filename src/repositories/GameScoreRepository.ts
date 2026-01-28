@@ -25,16 +25,52 @@ export class GameScoreRepository {
   ): Promise<GameScore> {
     logger.info({ walletAddress, gameId, score, playerId, farcasterUsername, farcasterFid }, 'Submitting game score');
 
-    // Build insert data
-    // NOTE: player_id is intentionally excluded due to Supabase schema cache issue
-    // The wallet_address serves as the primary identifier
+    const wallet = walletAddress.toLowerCase();
+
+    // Check for existing score (unique constraint on wallet_address + game_id)
+    const { data: existing } = await supabase
+      .from('game_scores')
+      .select('*')
+      .eq('wallet_address', wallet)
+      .eq('game_id', gameId)
+      .single();
+
+    if (existing) {
+      // Score exists - only update if new score is higher
+      if (score <= existing.score) {
+        logger.info({ walletAddress, gameId, newScore: score, existingScore: existing.score }, 'New score not higher, keeping existing');
+        return this.mapToGameScore(existing);
+      }
+
+      // Update with higher score
+      logger.info({ walletAddress, gameId, newScore: score, existingScore: existing.score }, 'New high score, updating');
+      const updateData: Record<string, unknown> = { score };
+      if (farcasterUsername) updateData.farcaster_username = farcasterUsername;
+      if (farcasterFid) updateData.farcaster_fid = farcasterFid;
+
+      const { data: updated, error: updateError } = await supabase
+        .from('game_scores')
+        .update(updateData)
+        .eq('id', existing.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        logger.error({ error: updateError, walletAddress, gameId, score }, 'Error updating score');
+        throw new Error(`Failed to update score: ${updateError.message}`);
+      }
+
+      // Check if this score makes them #1 and update the champion
+      await this.checkAndUpdateChampion(gameId, walletAddress, score, farcasterFid, farcasterUsername);
+      return this.mapToGameScore(updated);
+    }
+
+    // No existing score - insert new
     const insertData: Record<string, unknown> = {
-      wallet_address: walletAddress.toLowerCase(),
+      wallet_address: wallet,
       game_id: gameId,
       score,
     };
-    // player_id excluded: schema cache doesn't recognize the column
-    // if (playerId) insertData.player_id = playerId;
     if (farcasterUsername) insertData.farcaster_username = farcasterUsername;
     if (farcasterFid) insertData.farcaster_fid = farcasterFid;
 
