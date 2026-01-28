@@ -148,6 +148,7 @@ const GAME_INFO: Record<GameId, { name: string; emoji: string }> = {
   'endless-runner': { name: 'ENDLESS RUNNER', emoji: '🏃' },
   'flappy-bird': { name: 'FLAPPY BIRD', emoji: '🐦' },
   '2048': { name: '2048', emoji: '🔢' },
+  breakout: { name: 'BREAKOUT', emoji: '🧱' },
 };
 
 export class LeaderboardImageService {
