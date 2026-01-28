@@ -247,7 +247,8 @@ export class LeaderboardImageService {
       championWallet: champion?.walletAddress?.slice(0, 10),
       championScore: champion?.score?.toString(),
       hasPfp: !!pfpUrl,
-      pfpUrl: pfpUrl?.slice(0, 50)
+      pfpUrl: pfpUrl,
+      pfpUrlLength: pfpUrl?.length
     }, 'Champion data for image');
 
     if (pfpUrl) {
@@ -277,7 +278,11 @@ export class LeaderboardImageService {
         ctx.textAlign = 'center';
         ctx.fillText('* #1 *', pfpX + pfpSize / 2, pfpY - 10);
       } catch (error) {
-        logger.warn({ error, pfpUrl }, 'Failed to load champion PFP');
+        logger.warn({
+          error: error instanceof Error ? error.message : String(error),
+          pfpUrl,
+          pfpUrlLength: pfpUrl?.length
+        }, 'Failed to load champion PFP');
         await this.drawPlaceholderPfp(ctx, pfpX, pfpY, pfpSize);
       }
     } else {

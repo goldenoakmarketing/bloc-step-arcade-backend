@@ -35,7 +35,7 @@ router.get(
           score: data.score,
           farcasterUsername: data.farcaster_username,
           farcasterFid: data.farcaster_fid,
-          farcasterPfp: data.farcaster_pfp?.slice(0, 50),
+          farcasterPfp: data.farcaster_pfp,
           updatedAt: data.updated_at,
         } : null,
       },
@@ -170,6 +170,42 @@ router.post(
       trace.error = (e as Error).message;
       res.json({ success: false, trace });
     }
+  })
+);
+
+// Debug endpoint to check what image service sees
+router.get(
+  '/debug/image-data/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { gameChampionRepository } = await import('../../repositories/GameChampionRepository.js');
+
+    // Get same data that image service would use
+    const entries = await gameScoreRepository.getTopScores(gameId as GameId, 5);
+    const champion = await gameChampionRepository.getChampion(gameId as GameId);
+
+    res.json({
+      success: true,
+      debug: {
+        gameId,
+        entriesCount: entries.length,
+        entries: entries.map(e => ({
+          rank: e.rank,
+          wallet: e.walletAddress?.slice(0, 10) + '...',
+          score: e.score?.toString(),
+          farcasterUsername: e.farcasterUsername,
+          farcasterFid: e.farcasterFid,
+        })),
+        champion: champion ? {
+          wallet: champion.walletAddress?.slice(0, 10) + '...',
+          score: champion.score?.toString(),
+          farcasterUsername: champion.farcasterUsername,
+          farcasterFid: champion.farcasterFid,
+          farcasterPfp: champion.farcasterPfp?.slice(0, 50),
+        } : null,
+      },
+    });
   })
 );
 
