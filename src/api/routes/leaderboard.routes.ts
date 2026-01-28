@@ -54,14 +54,13 @@ router.post(
     const { score, wallet } = req.body;
     const { supabase } = await import('../../config/supabase.js');
 
-    // Try direct insert to see exact error
+    // Try direct insert WITHOUT player_id - schema cache issue
     const { data, error } = await supabase
       .from('game_scores')
       .insert({
         wallet_address: (wallet || '0x0000000000000000000000000000000000000001').toLowerCase(),
         game_id: gameId,
         score: score || 100,
-        player_id: null,
         farcaster_username: null,
         farcaster_fid: null,
       })

@@ -25,14 +25,16 @@ export class GameScoreRepository {
   ): Promise<GameScore> {
     logger.info({ walletAddress, gameId, score, playerId, farcasterUsername, farcasterFid }, 'Submitting game score');
 
-    const insertData = {
+    // Build insert data - only include optional fields if defined
+    // This works around Supabase schema cache issues with player_id
+    const insertData: Record<string, unknown> = {
       wallet_address: walletAddress.toLowerCase(),
       game_id: gameId,
       score,
-      player_id: playerId,
-      farcaster_username: farcasterUsername,
-      farcaster_fid: farcasterFid,
     };
+    if (playerId) insertData.player_id = playerId;
+    if (farcasterUsername) insertData.farcaster_username = farcasterUsername;
+    if (farcasterFid) insertData.farcaster_fid = farcasterFid;
 
     logger.debug({ insertData }, 'Insert payload');
 
