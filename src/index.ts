@@ -6,6 +6,8 @@ import { logger } from './utils/logger.js';
 import { errorHandler, notFoundHandler } from './api/middleware/errorHandler.js';
 import { eventListenerService } from './services/blockchain/EventListenerService.js';
 import { leaderboardService } from './services/analytics/LeaderboardService.js';
+import { supabase } from './config/supabase.js';
+import { publicClient } from './config/blockchain.js';
 
 // Import routes
 import gameRoutes from './api/routes/game.routes.js';
@@ -53,14 +55,38 @@ app.use((req, res, next) => {
 });
 
 // Health check
-app.get('/health', (_req, res) => {
-  res.json({
+app.get('/health', async (_req, res) => {
+  let dbOk = false;
+  let rpcOk = false;
+  let rpcBlockNumber: string | undefined;
+
+  try {
+    const { error } = await supabase.from('players').select('id').limit(1);
+    dbOk = !error;
+  } catch {
+    dbOk = false;
+  }
+
+  try {
+    const blockNumber = await publicClient.getBlockNumber();
+    rpcOk = true;
+    rpcBlockNumber = blockNumber.toString();
+  } catch {
+    rpcOk = false;
+  }
+
+  const status = dbOk && rpcOk ? 'healthy' : 'degraded';
+
+  res.status(status === 'healthy' ? 200 : 503).json({
     success: true,
     data: {
-      status: 'healthy',
+      status,
       version: process.env.npm_package_version || '1.0.0',
       timestamp: new Date().toISOString(),
       environment: config.nodeEnv,
+      db: dbOk ? 'ok' : 'error',
+      rpc: rpcOk ? 'ok' : 'error',
+      ...(rpcBlockNumber && { rpcBlockNumber }),
     },
   });
 });

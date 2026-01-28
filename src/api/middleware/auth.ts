@@ -47,7 +47,7 @@ export function requireWallet(req: Request, res: Response, next: NextFunction): 
   next();
 }
 
-export async function loadPlayer(req: Request, _res: Response, next: NextFunction): Promise<void> {
+export async function loadPlayer(req: Request, res: Response, next: NextFunction): Promise<void> {
   if (!req.walletAddress) {
     next();
     return;
@@ -60,6 +60,12 @@ export async function loadPlayer(req: Request, _res: Response, next: NextFunctio
     }
   } catch (error) {
     logger.error({ error, wallet: req.walletAddress }, 'Error loading player');
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error',
+      message: 'Failed to load player data',
+    });
+    return;
   }
 
   next();

@@ -175,30 +175,40 @@ export class TipCommandService {
 
   private async updatePlayerTipStats(fromWallet: Address, toWallet: Address, amount: bigint) {
     // Update sender stats
-    const { data: fromPlayer } = await supabase
+    const { data: fromPlayer, error: fromError } = await supabase
       .from('players')
       .select('*')
       .eq('wallet_address', fromWallet.toLowerCase())
       .single();
 
+    if (fromError && fromError.code !== 'PGRST116') {
+      logger.error({ error: fromError, wallet: fromWallet }, 'Error fetching sender player');
+    }
+
     if (fromPlayer) {
+      const newTotal = (BigInt(fromPlayer.total_tips_sent || 0) + amount).toString();
       await supabase
         .from('players')
-        .update({ total_tips_sent: fromPlayer.total_tips_sent + Number(amount) })
+        .update({ total_tips_sent: newTotal })
         .eq('id', fromPlayer.id);
     }
 
     // Update recipient stats
-    const { data: toPlayer } = await supabase
+    const { data: toPlayer, error: toError } = await supabase
       .from('players')
       .select('*')
       .eq('wallet_address', toWallet.toLowerCase())
       .single();
 
+    if (toError && toError.code !== 'PGRST116') {
+      logger.error({ error: toError, wallet: toWallet }, 'Error fetching recipient player');
+    }
+
     if (toPlayer) {
+      const newTotal = (BigInt(toPlayer.total_tips_received || 0) + amount).toString();
       await supabase
         .from('players')
-        .update({ total_tips_received: toPlayer.total_tips_received + Number(amount) })
+        .update({ total_tips_received: newTotal })
         .eq('id', toPlayer.id);
     }
   }

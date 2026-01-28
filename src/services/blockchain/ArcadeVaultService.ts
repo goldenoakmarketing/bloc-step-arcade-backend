@@ -63,6 +63,7 @@ export class ArcadeVaultService {
     const receipt = await publicClient.waitForTransactionReceipt({
       hash: txHash,
       confirmations: 1,
+      timeout: 60_000,
     });
 
     const success = receipt.status === 'success';

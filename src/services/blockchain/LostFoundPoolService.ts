@@ -12,7 +12,9 @@ const logger = createChildLogger('LostFoundPoolService')
 // Pool constants
 const POOL_CAP = 2500 // Max quarters in pool
 const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
-const OVERFLOW_STAKING_PERCENT = 75 // 75% to staking rewards (remaining 25% to operations)
+const OVERFLOW_STAKING_PERCENT = 60 // 60% to staking rewards
+const OVERFLOW_STABILITY_PERCENT = 25 // 25% to stability fund
+const OVERFLOW_PROFIT_PERCENT = 15 // 15% to profit sharing
 const QUARTER_AMOUNT = 250n * 10n ** 18n // 250 BLOC per quarter
 
 interface PoolState {
@@ -59,7 +61,8 @@ export class LostFoundPoolService {
   async addToPool(quarters: number, source: 'purchase_donation' | 'abandoned_game' | 'voluntary'): Promise<{
     addedToPool: number
     overflowToStaking: number
-    overflowToOperations: number
+    overflowToStability: number
+    overflowToProfit: number
   }> {
     const poolState = await this.getPoolState()
     const spaceInPool = Math.max(0, POOL_CAP - poolState.balance)
@@ -68,9 +71,10 @@ export class LostFoundPoolService {
     const addedToPool = Math.min(quarters, spaceInPool)
     const overflow = quarters - addedToPool
 
-    // Split overflow 75/25
+    // Split overflow 60/25/15
     const overflowToStaking = Math.floor(overflow * (OVERFLOW_STAKING_PERCENT / 100))
-    const overflowToOperations = overflow - overflowToStaking
+    const overflowToStability = Math.floor(overflow * (OVERFLOW_STABILITY_PERCENT / 100))
+    const overflowToProfit = overflow - overflowToStaking - overflowToStability
 
     // Update database
     if (addedToPool > 0 || overflow > 0) {
@@ -90,7 +94,8 @@ export class LostFoundPoolService {
     return {
       addedToPool,
       overflowToStaking,
-      overflowToOperations,
+      overflowToStability,
+      overflowToProfit,
     }
   }
 
@@ -101,7 +106,8 @@ export class LostFoundPoolService {
     donationAmount: number
     addedToPool: number
     overflowToStaking: number
-    overflowToOperations: number
+    overflowToStability: number
+    overflowToProfit: number
   }> {
     // 1 in 8 goes to pool
     const donationAmount = Math.floor(quartersPurchased / 8)
@@ -111,7 +117,8 @@ export class LostFoundPoolService {
         donationAmount: 0,
         addedToPool: 0,
         overflowToStaking: 0,
-        overflowToOperations: 0,
+        overflowToStability: 0,
+        overflowToProfit: 0,
       }
     }
 
@@ -129,7 +136,8 @@ export class LostFoundPoolService {
   async processAbandonedGame(quarters: number = 1): Promise<{
     addedToPool: number
     overflowToStaking: number
-    overflowToOperations: number
+    overflowToStability: number
+    overflowToProfit: number
   }> {
     return this.addToPool(quarters, 'abandoned_game')
   }
@@ -140,7 +148,8 @@ export class LostFoundPoolService {
   async processVoluntaryDonation(quarters: number): Promise<{
     addedToPool: number
     overflowToStaking: number
-    overflowToOperations: number
+    overflowToStability: number
+    overflowToProfit: number
   }> {
     return this.addToPool(quarters, 'voluntary')
   }
@@ -388,7 +397,7 @@ export class LostFoundPoolService {
     const hash = await this.walletClient.writeContract(request)
 
     // Wait for confirmation
-    await this.publicClient.waitForTransactionReceipt({ hash })
+    await this.publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 })
 
     return hash
   }

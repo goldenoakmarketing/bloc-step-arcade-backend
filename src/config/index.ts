@@ -28,6 +28,9 @@ const envSchema = z.object({
   NEYNAR_API_KEY: z.string().default('mock-key'),
   NEYNAR_WEBHOOK_SECRET: z.string().default('mock-secret'),
 
+  // Admin
+  ADMIN_API_KEY: z.string().default(''),
+
   // Event Listener
   START_BLOCK: z.string().default('0'),
   POLLING_INTERVAL_MS: z.string().default('5000'),
@@ -70,6 +73,8 @@ export const config = {
     neynarApiKey: parsed.data.NEYNAR_API_KEY,
     webhookSecret: parsed.data.NEYNAR_WEBHOOK_SECRET,
   },
+
+  adminApiKey: parsed.data.ADMIN_API_KEY,
 
   eventListener: {
     startBlock: BigInt(parsed.data.START_BLOCK),

@@ -164,21 +164,19 @@ export class GameSessionService {
   }
 
   private async ensurePlayer(walletAddress: Address) {
-    const { data: existing } = await supabase
-      .from('players')
-      .select('*')
-      .eq('wallet_address', walletAddress.toLowerCase())
-      .single();
-
-    if (existing) return existing;
-
     const { data, error } = await supabase
       .from('players')
-      .insert({ wallet_address: walletAddress.toLowerCase() })
+      .upsert(
+        { wallet_address: walletAddress.toLowerCase() },
+        { onConflict: 'wallet_address' }
+      )
       .select()
       .single();
 
-    if (error) throw new Error('Failed to create player');
+    if (error) {
+      logger.error({ error, walletAddress }, 'Error upserting player');
+      throw new Error('Failed to ensure player exists');
+    }
     return data;
   }
 

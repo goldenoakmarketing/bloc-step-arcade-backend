@@ -36,7 +36,12 @@ router.post(
     const signature = req.headers['x-neynar-signature'] as string | undefined;
     const rawBody = JSON.stringify(req.body);
 
-    if (signature && !neynarClient.verifyWebhookSignature(rawBody, signature)) {
+    if (!signature) {
+      logger.warn('Missing webhook signature');
+      throw new UnauthorizedError('Missing webhook signature');
+    }
+
+    if (!neynarClient.verifyWebhookSignature(rawBody, signature)) {
       logger.warn('Invalid webhook signature');
       throw new UnauthorizedError('Invalid webhook signature');
     }

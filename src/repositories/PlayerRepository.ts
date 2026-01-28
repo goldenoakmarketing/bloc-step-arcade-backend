@@ -63,9 +63,21 @@ export class PlayerRepository {
   }
 
   async findOrCreate(walletAddress: Address): Promise<Player> {
-    const existing = await this.findByWallet(walletAddress);
-    if (existing) return existing;
-    return this.create(walletAddress);
+    const { data, error } = await supabase
+      .from('players')
+      .upsert(
+        { wallet_address: walletAddress.toLowerCase() },
+        { onConflict: 'wallet_address' }
+      )
+      .select()
+      .single();
+
+    if (error) {
+      logger.error({ error, walletAddress }, 'Error in findOrCreate');
+      throw new Error('Failed to find or create player');
+    }
+
+    return this.mapToPlayer(data);
   }
 
   async linkFarcaster(
@@ -104,7 +116,7 @@ export class PlayerRepository {
 
   async updateCachedStakedBalance(walletAddress: Address, stakedBalanceWei: bigint): Promise<void> {
     // Convert from wei (18 decimals) to tokens for storage
-    const balanceTokens = stakedBalanceWei / BigInt(10 ** 18);
+    const balanceTokens = stakedBalanceWei / (10n ** 18n);
     await supabase
       .from('players')
       .update({ cached_staked_balance: Number(balanceTokens) })
@@ -112,65 +124,58 @@ export class PlayerRepository {
   }
 
   async incrementYeeted(walletAddress: Address, quarters: number): Promise<void> {
-    const player = await this.findOrCreate(walletAddress);
-    const { error } = await supabase
+    await this.findOrCreate(walletAddress);
+    const { data: current } = await supabase
       .from('players')
-      .update({ total_yeeted: Number(player.totalYeeted) + quarters })
-      .eq('id', player.id);
-    if (error) {
-      logger.error({ error, walletAddress, quarters }, 'Error incrementing yeeted');
+      .select('total_yeeted')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .single();
+
+    if (current) {
+      const { error } = await supabase
+        .from('players')
+        .update({ total_yeeted: (current.total_yeeted || 0) + quarters })
+        .eq('wallet_address', walletAddress.toLowerCase());
+      if (error) {
+        logger.error({ error, walletAddress, quarters }, 'Error incrementing yeeted');
+      }
     }
   }
 
   async getTopByYeet(limit = 100): Promise<Player[]> {
-    // Fetch all players with donations, then sort in JS to avoid string sorting issues
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_yeeted', 0);
+      .gt('total_yeeted', 0)
+      .order('total_yeeted', { ascending: false })
+      .limit(limit);
 
     if (!data || data.length === 0) return [];
-
-    // Sort by total_yeeted descending (as numbers)
-    const sorted = data
-      .sort((a, b) => Number(b.total_yeeted) - Number(a.total_yeeted))
-      .slice(0, limit);
-
-    return sorted.map(this.mapToPlayer);
+    return data.map(this.mapToPlayer);
   }
 
   async getTopByStaking(limit = 100): Promise<Player[]> {
-    // Fetch all players with staking balance, then sort in JS to handle string values
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('cached_staked_balance', 0);
+      .gt('cached_staked_balance', 0)
+      .order('cached_staked_balance', { ascending: false })
+      .limit(limit);
 
     if (!data || data.length === 0) return [];
-
-    // Sort by cached_staked_balance descending (convert to numbers for comparison)
-    const sorted = data
-      .sort((a, b) => Number(b.cached_staked_balance) - Number(a.cached_staked_balance))
-      .slice(0, limit);
-
-    return sorted.map(this.mapToPlayer);
+    return data.map(this.mapToPlayer);
   }
 
   async getTopByTimePlayed(limit = 100): Promise<Player[]> {
-    // Fetch all players with time played, then sort in JS to avoid string sorting issues
     const { data } = await supabase
       .from('players')
       .select('*')
-      .gt('total_time_consumed', 0);
+      .gt('total_time_consumed', 0)
+      .order('total_time_consumed', { ascending: false })
+      .limit(limit);
 
     if (!data || data.length === 0) return [];
-
-    // Sort by total_time_consumed descending (as numbers)
-    const sorted = data
-      .sort((a, b) => Number(b.total_time_consumed) - Number(a.total_time_consumed))
-      .slice(0, limit);
-
-    return sorted.map(this.mapToPlayer);
+    return data.map(this.mapToPlayer);
   }
 
   async count(): Promise<number> {
@@ -232,13 +237,21 @@ export class PlayerRepository {
   }
 
   async addTimeConsumed(walletAddress: Address, seconds: number): Promise<void> {
-    const player = await this.findOrCreate(walletAddress);
-    const { error } = await supabase
+    await this.findOrCreate(walletAddress);
+    const { data: current } = await supabase
       .from('players')
-      .update({ total_time_consumed: Number(player.totalTimeConsumed) + seconds })
-      .eq('id', player.id);
-    if (error) {
-      logger.error({ error, walletAddress, seconds }, 'Error adding time consumed');
+      .select('total_time_consumed')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .single();
+
+    if (current) {
+      const { error } = await supabase
+        .from('players')
+        .update({ total_time_consumed: (current.total_time_consumed || 0) + seconds })
+        .eq('wallet_address', walletAddress.toLowerCase());
+      if (error) {
+        logger.error({ error, walletAddress, seconds }, 'Error adding time consumed');
+      }
     }
   }
 

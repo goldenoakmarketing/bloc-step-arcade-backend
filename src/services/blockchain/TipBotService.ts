@@ -58,6 +58,7 @@ export class TipBotService {
     const receipt = await publicClient.waitForTransactionReceipt({
       hash: txHash,
       confirmations: 1,
+      timeout: 60_000,
     });
 
     const success = receipt.status === 'success';

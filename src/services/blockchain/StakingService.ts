@@ -123,7 +123,7 @@ export class StakingService {
 
         // Convert from wei (18 decimals) to tokens for storage
         // This avoids BigInt precision issues with Number()
-        const balanceTokens = balanceWei / BigInt(10 ** 18);
+        const balanceTokens = balanceWei / (10n ** 18n);
 
         await supabase
           .from('players')

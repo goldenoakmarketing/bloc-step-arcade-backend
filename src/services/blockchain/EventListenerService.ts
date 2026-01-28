@@ -225,7 +225,7 @@ export class EventListenerService {
     await supabase.from('block_sync_state').upsert({
       contract_name: contractName,
       contract_address: contractAddress,
-      last_synced_block: Number(blockNumber),
+      last_synced_block: blockNumber.toString(),
       last_synced_at: new Date().toISOString(),
     });
   }
@@ -236,13 +236,15 @@ export class EventListenerService {
 
     const player = await this.ensurePlayer(args.player);
 
+    const secondsNum = Number(args.seconds);
+
     await supabase.from('time_purchases').insert({
       player_id: player?.id,
       wallet_address: args.player,
-      seconds_purchased: Number(args.seconds),
+      seconds_purchased: secondsNum,
       cost_wei: args.cost.toString(),
       tx_hash: log.transactionHash!,
-      block_number: Number(log.blockNumber),
+      block_number: log.blockNumber!.toString(),
       log_index: log.logIndex!,
     });
 
@@ -250,15 +252,15 @@ export class EventListenerService {
       await supabase
         .from('players')
         .update({
-          total_time_purchased: player.total_time_purchased + Number(args.seconds),
-          cached_time_balance: player.cached_time_balance + Number(args.seconds),
+          total_time_purchased: (player.total_time_purchased || 0) + secondsNum,
+          cached_time_balance: (player.cached_time_balance || 0) + secondsNum,
         })
         .eq('id', player.id);
     }
 
     // Route 1/8 of purchase to Lost & Found pool
     // 1 quarter = 15 minutes = 900 seconds
-    const quartersPurchased = Math.floor(Number(args.seconds) / 900);
+    const quartersPurchased = Math.floor(secondsNum / 900);
     if (quartersPurchased > 0) {
       try {
         const result = await lostFoundPoolService.processPurchaseDonation(quartersPurchased);
@@ -267,7 +269,7 @@ export class EventListenerService {
             quartersPurchased,
             donationAmount: result.donationAmount,
             addedToPool: result.addedToPool,
-            overflow: result.overflowToStaking + result.overflowToOperations,
+            overflow: result.overflowToStaking + result.overflowToStability + result.overflowToProfit,
           }, 'Routed purchase donation to Lost & Found pool');
         }
       } catch (error) {
@@ -283,11 +285,12 @@ export class EventListenerService {
     const player = await this.getPlayer(args.player);
 
     if (player) {
+      const secondsNum = Number(args.seconds);
       await supabase
         .from('players')
         .update({
-          total_time_consumed: player.total_time_consumed + Number(args.seconds),
-          cached_time_balance: Math.max(0, player.cached_time_balance - Number(args.seconds)),
+          total_time_consumed: (player.total_time_consumed || 0) + secondsNum,
+          cached_time_balance: Math.max(0, (player.cached_time_balance || 0) - secondsNum),
         })
         .eq('id', player.id);
     }
@@ -310,15 +313,16 @@ export class EventListenerService {
       wallet_address: args.player,
       amount_wei: args.amount.toString(),
       tx_hash: log.transactionHash!,
-      block_number: Number(log.blockNumber),
+      block_number: log.blockNumber!.toString(),
       log_index: log.logIndex!,
       event_timestamp: new Date(Number(args.timestamp) * 1000).toISOString(),
     });
 
     if (player) {
+      const newTotal = (BigInt(player.total_yeeted || 0) + args.amount).toString();
       await supabase
         .from('players')
-        .update({ total_yeeted: player.total_yeeted + Number(args.amount) })
+        .update({ total_yeeted: newTotal })
         .eq('id', player.id);
     }
   }
@@ -335,14 +339,15 @@ export class EventListenerService {
       event_type: 'stake',
       amount_wei: args.amount.toString(),
       tx_hash: log.transactionHash!,
-      block_number: Number(log.blockNumber),
+      block_number: log.blockNumber!.toString(),
       log_index: log.logIndex!,
     });
 
     if (player) {
+      const newBalance = (BigInt(player.cached_staked_balance || 0) + args.amount).toString();
       await supabase
         .from('players')
-        .update({ cached_staked_balance: player.cached_staked_balance + Number(args.amount) })
+        .update({ cached_staked_balance: newBalance })
         .eq('id', player.id);
     }
   }
@@ -359,14 +364,16 @@ export class EventListenerService {
       event_type: 'unstake',
       amount_wei: args.amount.toString(),
       tx_hash: log.transactionHash!,
-      block_number: Number(log.blockNumber),
+      block_number: log.blockNumber!.toString(),
       log_index: log.logIndex!,
     });
 
     if (player) {
+      const current = BigInt(player.cached_staked_balance || 0);
+      const newBalance = current > args.amount ? (current - args.amount).toString() : '0';
       await supabase
         .from('players')
-        .update({ cached_staked_balance: Math.max(0, player.cached_staked_balance - Number(args.amount)) })
+        .update({ cached_staked_balance: newBalance })
         .eq('id', player.id);
     }
   }
@@ -406,18 +413,21 @@ export class EventListenerService {
   }
 
   private async ensurePlayer(walletAddress: Address) {
-    let player = await this.getPlayer(walletAddress);
+    const { data, error } = await supabase
+      .from('players')
+      .upsert(
+        { wallet_address: walletAddress.toLowerCase() },
+        { onConflict: 'wallet_address' }
+      )
+      .select()
+      .single();
 
-    if (!player) {
-      const { data } = await supabase
-        .from('players')
-        .insert({ wallet_address: walletAddress.toLowerCase() })
-        .select()
-        .single();
-      player = data;
+    if (error) {
+      logger.error({ error, walletAddress }, 'Error upserting player');
+      return null;
     }
 
-    return player;
+    return data;
   }
 }
 
