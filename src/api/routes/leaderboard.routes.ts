@@ -78,6 +78,69 @@ router.post(
   })
 );
 
+// Debug endpoint to trace full score submission flow
+router.post(
+  '/debug/trace-submit/:gameId',
+  standardRateLimit,
+  asyncHandler(async (req, res) => {
+    const { gameId } = req.params;
+    const { score, wallet, farcasterUsername, farcasterFid } = req.body;
+    const trace: Record<string, unknown> = { steps: [] };
+
+    try {
+      // Step 1: Validate gameId
+      (trace.steps as unknown[]).push({ step: 1, action: 'validateGameId', gameId });
+      if (!gameId || !VALID_GAME_IDS.includes(gameId as GameId)) {
+        (trace.steps as unknown[]).push({ step: 1, error: `Invalid game ID: ${gameId}` });
+        res.json({ success: false, trace });
+        return;
+      }
+      (trace.steps as unknown[]).push({ step: 1, result: 'valid' });
+
+      // Step 2: Find player (optional)
+      const walletAddr = (wallet || '0x0000000000000000000000000000000000000001').toLowerCase() as Address;
+      (trace.steps as unknown[]).push({ step: 2, action: 'findPlayer', wallet: walletAddr });
+      let player = null;
+      try {
+        player = await playerRepository.findByWallet(walletAddr);
+        (trace.steps as unknown[]).push({ step: 2, result: player ? { id: player.id, fc: player.farcasterUsername } : null });
+      } catch (e) {
+        (trace.steps as unknown[]).push({ step: 2, error: (e as Error).message });
+      }
+
+      // Step 3: Submit score
+      (trace.steps as unknown[]).push({ step: 3, action: 'submitScore', score, playerId: player?.id });
+      try {
+        const gameScore = await gameScoreRepository.submitScore(
+          walletAddr,
+          gameId as GameId,
+          score || 100,
+          player?.id,
+          player?.farcasterUsername || farcasterUsername,
+          player?.farcasterFid || farcasterFid
+        );
+        (trace.steps as unknown[]).push({ step: 3, result: { id: gameScore.id, score: gameScore.score.toString() } });
+
+        // Step 4: Get rank
+        (trace.steps as unknown[]).push({ step: 4, action: 'getPlayerRank' });
+        const rank = await gameScoreRepository.getPlayerRank(walletAddr, gameId as GameId);
+        (trace.steps as unknown[]).push({ step: 4, result: { rank } });
+
+        trace.success = true;
+        trace.finalResult = { gameScoreId: gameScore.id, rank };
+      } catch (e) {
+        (trace.steps as unknown[]).push({ step: 3, error: (e as Error).message });
+        trace.success = false;
+      }
+
+      res.json({ success: trace.success, trace });
+    } catch (e) {
+      trace.error = (e as Error).message;
+      res.json({ success: false, trace });
+    }
+  })
+);
+
 // Game-specific image endpoint - no auth needed, cached for sharing
 router.get(
   '/image/:gameId',
