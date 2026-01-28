@@ -14,7 +14,7 @@ const POOL_CAP = 2500 // Max quarters in pool
 const COOLDOWN_MS = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
 const OVERFLOW_STAKING_PERCENT = 60 // 60% to staking rewards
 const OVERFLOW_STABILITY_PERCENT = 25 // 25% to stability fund
-const OVERFLOW_PROFIT_PERCENT = 15 // 15% to profit sharing
+// Profit gets the remainder (15%) to avoid rounding loss
 const QUARTER_AMOUNT = 250n * 10n ** 18n // 250 BLOC per quarter
 
 interface PoolState {

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import { parseAbiItem } from 'viem';
 import { lostFoundPoolService } from '../../services/blockchain/LostFoundPoolService.js';
 import { playerRepository } from '../../repositories/PlayerRepository.js';
 import { publicClient } from '../../config/blockchain.js';
@@ -136,7 +135,6 @@ router.post(
     }
 
     // Parse Transfer logs to verify BLOC was sent to PoolPayout
-    const transferEvent = parseAbiItem('event Transfer(address indexed from, address indexed to, uint256 value)');
     const expectedAmount = BigInt(quarters) * QUARTER_WEI;
 
     const matchingLog = receipt.logs.find((log) => {
