@@ -51,20 +51,30 @@ const initFonts = async (): Promise<boolean> => {
   try {
     // Log available font families for debugging
     const families = GlobalFonts.families;
-    logger.info({ fontCount: families.length }, 'Available font families');
+    const familyNames = families.map(f => f.family);
+    logger.info({ fontCount: families.length }, 'Font initialization starting');
 
     if (families.length > 0) {
-      logger.info({ fonts: families.slice(0, 10).map(f => f.family) }, 'Sample fonts available');
+      logger.info({ fonts: familyNames.slice(0, 20) }, 'Available system fonts (first 20)');
+    } else {
+      logger.warn('No system fonts detected by @napi-rs/canvas');
     }
 
-    // Check if we have any usable fonts
-    const hasUsableFont = families.some(f =>
-      f.family.toLowerCase().includes('mono') ||
-      f.family.toLowerCase().includes('courier') ||
-      f.family.toLowerCase().includes('sans') ||
-      f.family.toLowerCase().includes('arial') ||
-      f.family.toLowerCase().includes('dejavu')
-    );
+    // Check for usable fonts by category
+    const monoFonts = familyNames.filter(f => f.toLowerCase().includes('mono'));
+    const sansFonts = familyNames.filter(f => f.toLowerCase().includes('sans') || f.toLowerCase().includes('arial'));
+    const courierFonts = familyNames.filter(f => f.toLowerCase().includes('courier'));
+    const dejavuFonts = familyNames.filter(f => f.toLowerCase().includes('dejavu'));
+
+    logger.info({
+      monoFonts: monoFonts.slice(0, 5),
+      sansFonts: sansFonts.slice(0, 5),
+      courierFonts,
+      dejavuFonts,
+    }, 'Font categories found');
+
+    const hasUsableFont = monoFonts.length > 0 || sansFonts.length > 0 ||
+      courierFonts.length > 0 || dejavuFonts.length > 0;
 
     if (!hasUsableFont || families.length === 0) {
       logger.warn('No usable fonts found, downloading fallback font...');
@@ -76,17 +86,29 @@ const initFonts = async (): Promise<boolean> => {
       fontRegistered = await registerFontFromUrl(fontUrl, FONT_NAME);
 
       if (fontRegistered) {
-        logger.info('Fallback font registered successfully');
+        logger.info({ fontName: FONT_NAME }, 'Fallback font downloaded and registered successfully');
       } else {
-        logger.error('Failed to register fallback font - text may not render');
+        logger.error('Failed to register fallback font - text rendering will use canvas defaults');
       }
     } else {
-      logger.info('System fonts available, using those');
+      const selectedFont = monoFonts[0] || courierFonts[0] || dejavuFonts[0] || sansFonts[0];
+      logger.info({ selectedFont, fallbackChain: getFontFamily() }, 'Using system fonts');
     }
+
+    // Log final font configuration
+    logger.info({
+      fontRegistered,
+      fontFamily: getFontFamily(),
+      totalFontsAvailable: families.length,
+    }, 'Font initialization complete');
 
     return true;
   } catch (error) {
-    logger.error({ error }, 'Failed to initialize fonts');
+    logger.error({
+      error,
+      errorMessage: error instanceof Error ? error.message : String(error),
+      errorStack: error instanceof Error ? error.stack : undefined,
+    }, 'Font initialization failed - images will render with default canvas fonts');
     return false;
   }
 };
