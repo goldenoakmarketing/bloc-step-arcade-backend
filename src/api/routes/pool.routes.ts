@@ -124,7 +124,7 @@ router.post(
       data: {
         addedToPool: result.addedToPool,
         overflowToStaking: result.overflowToStaking,
-        overflowToOperations: result.overflowToOperations,
+        overflowToProfit: result.overflowToProfit,
         walletAddress: walletAddress.toLowerCase(),
         txHash,
       },
