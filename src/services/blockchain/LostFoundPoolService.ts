@@ -201,40 +201,56 @@ export class LostFoundPoolService {
   }
 
   /**
-   * Calculate streak based on time since last claim
+   * Get recent activity for a wallet (quarters spent + donated in last 7 days)
    */
-  private calculateNewStreak(lastClaimTime: Date | null, currentStreak: number, now: number): number {
-    if (!lastClaimTime) {
-      return 1 // First claim ever
-    }
+  async getRecentActivity(walletAddress: string): Promise<number> {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-    const hoursSinceLastClaim = (now - new Date(lastClaimTime).getTime()) / (1000 * 60 * 60)
+    // Query quarters spent on gameplay (time_purchases in last 7 days)
+    const { data: purchases } = await supabase
+      .from('time_purchases')
+      .select('seconds_purchased')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .gte('created_at', sevenDaysAgo)
 
-    if (hoursSinceLastClaim >= 24 && hoursSinceLastClaim <= 48) {
-      // Within window: streak continues
-      return currentStreak + 1
-    } else if (hoursSinceLastClaim > 48) {
-      // Missed a day: streak resets
-      return 1
-    }
+    const quartersSpent = (purchases || []).reduce(
+      (sum, p) => sum + Math.floor(Number(p.seconds_purchased) / 900),
+      0
+    )
 
-    // Shouldn't reach here due to cooldown, but return current streak
-    return currentStreak
+    // Query quarters donated (yeet_events in last 7 days)
+    const { data: yeets } = await supabase
+      .from('yeet_events')
+      .select('amount_wei')
+      .eq('wallet_address', walletAddress.toLowerCase())
+      .gte('event_timestamp', sevenDaysAgo)
+
+    const quartersDonated = (yeets || []).reduce(
+      (sum, y) => sum + Number(BigInt(y.amount_wei) / QUARTER_AMOUNT),
+      0
+    )
+
+    const total = quartersSpent + quartersDonated
+    logger.info({ walletAddress, quartersSpent, quartersDonated, total }, 'Calculated recent activity')
+    return total
   }
 
   /**
-   * Get max claimable based on streak (consecutive daily check-ins)
-   * 4+ days → 4 quarters
-   * 2-3 days → 2 quarters
-   * 1 day → 1 quarter
+   * Get max claimable based on recent activity (quarters spent + donated in last 7 days)
+   * 4+ activity → 4 quarters
+   * 2-3 activity → 2 quarters
+   * 1 activity → 1 quarter
+   * 0 activity → 0 quarters (no freeloading)
    */
-  getMaxClaimable(streak: number): number {
-    if (streak >= 4) {
+  getMaxClaimable(activityCount: number): number {
+    if (activityCount >= 4) {
       return 4
-    } else if (streak >= 2) {
+    } else if (activityCount >= 2) {
       return 2
+    } else if (activityCount >= 1) {
+      return 1
     }
-    return 1
+    return 0
   }
 
   /**
@@ -256,16 +272,12 @@ export class LostFoundPoolService {
       }
     }
 
-    // Get current claim state
+    // Get current claim state and activity
     const claimState = await this.getClaimState(walletAddress)
-    const currentStreak = claimState?.streak || 0
-    const lastClaimTime = claimState?.last_claim_time ? new Date(claimState.last_claim_time) : null
+    const activityCount = await this.getRecentActivity(walletAddress)
 
-    // Calculate new streak
-    const newStreak = this.calculateNewStreak(lastClaimTime, currentStreak, now)
-
-    // Get max claimable based on streak
-    const maxClaimable = this.getMaxClaimable(newStreak)
+    // Get max claimable based on recent activity
+    const maxClaimable = this.getMaxClaimable(activityCount)
     const poolState = await this.getPoolState()
     const claimed = Math.min(maxClaimable, poolState.balance)
 
@@ -273,9 +285,9 @@ export class LostFoundPoolService {
       return {
         claimed: 0,
         poolBalanceAfter: poolState.balance,
-        streak: newStreak,
+        streak: activityCount,
         nextClaimTime: this.getNextResetTime(now),
-        cooldownActive: false,  // Not on cooldown, just empty pool
+        cooldownActive: false,
       }
     }
 
@@ -316,7 +328,7 @@ export class LostFoundPoolService {
       wallet_address: walletAddress.toLowerCase(),
       player_id: playerId || null,
       last_claim_time: claimTime,
-      streak: newStreak,
+      streak: activityCount,
       total_claimed: (claimState?.total_claimed || 0) + claimed,
     }
 
@@ -338,14 +350,14 @@ export class LostFoundPoolService {
       throw new Error(`Failed to record claim: ${upsertError.message}`)
     }
 
-    logger.info({ walletAddress, claimTime, newStreak }, 'Claim state updated')
+    logger.info({ walletAddress, claimTime, activityCount }, 'Claim state updated')
 
     // Record claim history
     const { error: historyError } = await supabase.from('pool_claim_history').insert({
       player_id: playerId || null,
       wallet_address: walletAddress.toLowerCase(),
       quarters_claimed: claimed,
-      streak_at_claim: newStreak,
+      streak_at_claim: activityCount,
       pool_balance_after: newPoolBalance,
       tx_hash: txHash,
     })
@@ -359,12 +371,12 @@ export class LostFoundPoolService {
       }, 'Failed to record claim history (non-fatal)')
     }
 
-    logger.info({ walletAddress, claimed, newStreak, txHash }, 'Player claimed from pool')
+    logger.info({ walletAddress, claimed, activityCount, txHash }, 'Player claimed from pool')
 
     return {
       claimed,
       poolBalanceAfter: newPoolBalance,
-      streak: newStreak,
+      streak: activityCount,
       nextClaimTime: this.getNextResetTime(now),
       cooldownActive: false,  // Explicit success - claim completed
       txHash,
@@ -493,18 +505,18 @@ export class LostFoundPoolService {
     maxClaimable: number
     totalClaimed: number
   }> {
-    const [cooldownCheck, claimState] = await Promise.all([
+    const [cooldownCheck, claimState, activityCount] = await Promise.all([
       this.canClaim(walletAddress),
       this.getClaimState(walletAddress),
+      this.getRecentActivity(walletAddress),
     ])
 
-    const streak = claimState?.streak || 0
-    const maxClaimable = this.getMaxClaimable(cooldownCheck.allowed ? streak + 1 : streak)
+    const maxClaimable = this.getMaxClaimable(activityCount)
 
     return {
       canClaim: cooldownCheck.allowed,
       nextClaimTime: cooldownCheck.nextClaimTime,
-      streak,
+      streak: activityCount,
       maxClaimable,
       totalClaimed: claimState?.total_claimed || 0,
     }
