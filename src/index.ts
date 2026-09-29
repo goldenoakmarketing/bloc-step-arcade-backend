@@ -58,8 +58,8 @@ app.use((req, res, next) => {
 
 // Health check
 app.get('/health', async (_req, res) => {
-  let dbOk = false;
-  let rpcOk = false;
+  let dbOk: boolean;
+  let rpcOk: boolean;
   let rpcBlockNumber: string | undefined;
 
   try {

@@ -1,0 +1,15 @@
+.git
+node_modules
+dist
+coverage
+.env
+.env.*
+logs
+*.log
+.cache
+*.tsbuildinfo
+.vscode
+.idea
+tests
+docs
+scripts

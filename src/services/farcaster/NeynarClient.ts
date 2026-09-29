@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { config } from '../../config/index.js';
 import { createChildLogger } from '../../utils/logger.js';
 import { retry, isRetryableError } from '../../utils/retry.js';
@@ -183,9 +184,7 @@ export class NeynarClient {
   }
 
   verifyWebhookSignature(body: string, signature: string): boolean {
-    const crypto = require('crypto') as typeof import('crypto');
-    const expectedSignature = crypto
-      .createHmac('sha256', config.farcaster.webhookSecret)
+    const expectedSignature = createHmac('sha256', config.farcaster.webhookSecret)
       .update(body)
       .digest('hex');
 
